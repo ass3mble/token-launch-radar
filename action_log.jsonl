@@ -1,0 +1,9 @@
+{"ts":"2026-11-23T10:24:00Z","action":"read","detail":"Read RULES.txt, input/README.md, starter main.ts, lib/model.ts, dashboard app.js/index.html, competition requirements"}
+{"ts":"2026-11-23T10:26:00Z","action":"analyze","detail":"Snapshot: 758 protocols, 342 pre-token, 40 watchlist; live mcap/TVL median 0.20 over 129 live-token protocols"}
+{"ts":"2026-11-23T10:27:00Z","action":"write","detail":"Wrote lib/model.ts (radar-2 model, 8-step farm plans) and main.ts"}
+{"ts":"2026-11-23T10:28:00Z","action":"write","detail":"Wrote dashboard/index.html, app.css, app.js (search, category/chain/growth filters, watchlist toggle, sort, detail dialog, live view, model panel)"}
+{"ts":"2026-11-23T10:28:00Z","action":"write","detail":"Wrote STRATEGY.md, METHODOLOGY.md, README.md, .makefun/owner.json, scripts/check-gate.mjs, replay.sh"}
+{"ts":"2026-11-23T10:28:00Z","action":"run","detail":"Ran main.ts on the sealed snapshot: 197 rows (40 watchlist + 157 early), 24 live set aside"}
+{"ts":"2026-11-23T10:29:00Z","action":"fix","detail":"Early radar widened from below-floor-only to all rankable pre-token protocols after finding 20 above-floor protocols dropped by the floor filter; added Cross Chain Bridge to the product exclusion"}
+{"ts":"2026-11-23T10:30:00Z","action":"screenshot","detail":"Captured 1-board.png, 2-detail.png, 3-filtered.png at 1440x900 with headless Chromium via playwright-core"}
+{"ts":"2026-11-23T10:31:00Z","action":"verify","detail":"Local gate mirror 7/7 pass; two runs byte-identical; grade-local refused (server-only grading for program/v1)"}

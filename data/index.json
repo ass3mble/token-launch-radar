@@ -1,0 +1,107 @@
+{
+  "competition": "token-radar-01",
+  "title": "Build the best token launch radar",
+  "model_version": "radar-2",
+  "snapshot_as_of": "2026-11-14",
+  "snapshot_source": "DefiLlama https://api.llama.fi/protocols",
+  "generated_at_utc": "2026-11-23T10:31:21.186Z",
+  "board": {
+    "rows": 197,
+    "watchlist_rows": 40,
+    "early_rows": 157,
+    "top_implied_value_usd": 420289620,
+    "top_10": [
+      {
+        "rank": 1,
+        "slug": "steakhouse-financial",
+        "name": "Steakhouse Financial",
+        "implied_value_usd": 420289620
+      },
+      {
+        "rank": 2,
+        "slug": "sentora-curator",
+        "name": "Sentora Curator",
+        "implied_value_usd": 419128745
+      },
+      {
+        "rank": 3,
+        "slug": "gauntlet",
+        "name": "Gauntlet",
+        "implied_value_usd": 255900487
+      },
+      {
+        "rank": 4,
+        "slug": "veda",
+        "name": "Veda",
+        "implied_value_usd": 229841942
+      },
+      {
+        "rank": 5,
+        "slug": "usdd",
+        "name": "USDD",
+        "implied_value_usd": 163462609
+      },
+      {
+        "rank": 6,
+        "slug": "upshift",
+        "name": "Upshift",
+        "implied_value_usd": 86633609
+      },
+      {
+        "rank": 7,
+        "slug": "polymarket-international",
+        "name": "Polymarket International",
+        "implied_value_usd": 63345981
+      },
+      {
+        "rank": 8,
+        "slug": "nonce-capital",
+        "name": "Nonce Capital",
+        "implied_value_usd": 61288447
+      },
+      {
+        "rank": 9,
+        "slug": "cian-yield-layer",
+        "name": "CIAN Yield Layer",
+        "implied_value_usd": 47703264
+      },
+      {
+        "rank": 10,
+        "slug": "onre",
+        "name": "OnRe",
+        "implied_value_usd": 47417594
+      }
+    ]
+  },
+  "files": [
+    "main.ts",
+    "lib/model.ts",
+    "vendor/makefun-board.ts",
+    "dashboard/index.html",
+    "dashboard/app.css",
+    "dashboard/app.js",
+    "screenshots/1-board.png",
+    "screenshots/2-detail.png",
+    "screenshots/3-filtered.png",
+    "STRATEGY.md",
+    "METHODOLOGY.md",
+    "README.md",
+    "LICENSE",
+    "data/index.json",
+    "action_log.jsonl",
+    "replay.sh",
+    "scripts/check-gate.mjs",
+    ".makefun/owner.json"
+  ],
+  "gate_local": {
+    "dashboard_files": "pass",
+    "board_file": "pass",
+    "sorted_by_value": "pass",
+    "coverage": "pass",
+    "farm_steps": "pass",
+    "screenshots": "pass",
+    "dossier_matches": "pass"
+  },
+  "dossier_bytes": 700293,
+  "note": "Local gate mirror only; the sealed scorer grades on the server. Not yet submitted."
+}
