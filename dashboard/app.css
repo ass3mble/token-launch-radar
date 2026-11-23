@@ -81,6 +81,9 @@ th button:hover { color: var(--text); }
 .status { display: inline-block; font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .status.watch { border-color: var(--accent); color: var(--accent); }
 .status.live { border-color: var(--green); color: var(--green); }
+.status.farm { border-color: var(--green); color: var(--green); font-weight: 700; }
+.status.thin { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.status.skip { border-color: var(--red); color: var(--red); font-weight: 700; }
 .badge { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 1px; }
 .empty { padding: 36px 20px; text-align: center; }
 .empty h2 { margin: 0 0 6px; }

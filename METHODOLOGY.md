@@ -1,4 +1,4 @@
-# Methodology — Token Radar (model radar-3)
+# Methodology — Token Radar (model radar-4)
 
 ## Input
 
@@ -47,7 +47,7 @@ The 128 with a positive market cap are the anchors of the value fit. (Version 1'
 METHODOLOGY.md said 129 live anchors; that was wrong — the snapshot holds 128 positive market
 caps, and this version corrects the count.)
 
-## The value model (radar-3)
+## The value model (radar-4)
 
 ```
 log10(mcap) = 3.0247 + 0.5223 x log10(TVL)     # OLS on the 128 live anchors
@@ -88,51 +88,87 @@ fitted model's error is 1.11 times smaller than the baseline's.
 | Walk-forward (fit on the earliest 47 by `listed_at`, tested on the latest 48; n=95 dated) | 0.6789 | 0.7979 | **×1.18** |
 
 Within-kx shares (leave-one-out): within 2× of the true market cap 32.0% (baseline 28.1%);
-within 5× 58.6% (baseline 50.0%). Median error factor ×3.40 (baseline ×4.99).
+within 3× 42.2% (baseline 35.2%); within 5× 58.6% (baseline 50.0%). Median error factor
+×3.40 (baseline ×4.99). The baseline shares are scored in-sample, which favours the
+baseline; the fitted shares are out of sample.
 
 ### Terms that were tested and dropped
 
-Each term below was added to the fitted model and kept only if leave-one-out error fell.
-None did, so the value model is TVL alone.
+Each term below was added to the fitted model and kept only if it improved **both** blind
+tests — leave-one-out and walk-forward. None did, so the value model is TVL alone. The
+battery is a brute-force refit each time (no shrunk approximations), and the walk-forward
+test refits on the earliest 47 dated anchors and tests on the latest 48.
 
-| term tested | leave-one-out MAE with it | decision |
-| --- | --- | --- |
-| Fitted log-log on TVL alone (the model) | 0.6931 | kept |
-| + 7-day growth, weight 0.2 | 0.6936 | dropped |
-| + maturity 0.90 + 0.10 over 4 years | 0.6952 | dropped |
-| + growth and maturity together | 0.6958 | dropped |
-| + category intercepts, shrunk n/(n+8) | 0.6943 | dropped |
-| + logAge, growth, chain count as extra regressors | 0.6995 / 0.7133 / 0.7070 | dropped |
+| term tested | leave-one-out MAE with it | walk-forward MAE with it | decision |
+| --- | --- | --- | --- |
+| Fitted log-log on TVL alone (the model) | 0.6931 | 0.6789 | kept |
+| + 7-day growth, weight 0.2 | 0.6936 | 0.6796 | dropped |
+| + maturity 0.90 + 0.10 over 4 years | 0.6952 | 0.6799 | dropped |
+| + curvature: logTVL squared | 0.6977 | 0.6761 | dropped |
+| + chain count: log10(1 + chains) | 0.6978 | 0.6963 | dropped |
+| + age: log1p(age in days) | 0.6995 | 0.6843 | dropped |
+| + growth × logTVL interaction | 0.7111 | 0.7538 | dropped |
+| + age × logTVL interaction | 0.7014 | 0.6566 | dropped |
+| + hinge at median logTVL | 0.7010 | 0.6835 | dropped |
+| + Lending intercept only | 0.6928 | 0.6808 | dropped |
+| + category intercepts (n ≥ 8, proper refit) | 0.7045 | 0.6789 | dropped |
+| + Huber robust fit (k = 1.345) | 0.6930 | 0.6837 | dropped |
+| + L1 / median fit | 0.6912 | 0.6897 | dropped |
+
+Three candidates pass one test and fail the other, which is why the both-tests rule matters:
+curvature and the age × logTVL interaction both improve walk-forward (0.6761 and 0.6566
+against 0.6789) but worsen leave-one-out; the L1 fit improves leave-one-out (0.6912 against
+0.6931) but worsens walk-forward. Keeping any of them would be picking the test that
+flatters it. The Lending-only intercept is the closest call on leave-one-out (0.6928 against
+0.6931) and fails walk-forward.
+
+One caveat on the category row: the walk-forward figure equals the base model's (0.6789)
+because no category reaches 8 anchors in the 47-row training half — the largest is Lending
+with 6 — so no category dummy was fitted in that test at all. The drop therefore rests on
+leave-one-out (0.7045 against 0.6931) and on the fitted intercepts being unstable across the
+128 anchors, not on a walk-forward rejection.
 
 Growth and age add no out-of-sample power for market cap, so they left the value fit — but
-both still enter the launch-odds score below, so the board still ranks on TVL, growth and
-age.
+chain count and the category token rate do enter the launch-odds score below, where they earn
+their place on cross-validation.
 
-### Range honesty (conformal band)
+### Range honesty (conformal bands)
 
-Leave-one-out residuals give the 80% conformal band: **×11.43** (90%: ×30.75). Every implied
-value on the board carries its 80% interval in its detail view, e.g. Sentora Curator
-$90.3M → $7.9M – $1.03B. A per-kind band was considered and left out: the residuals do not
-separate by kind, so a per-kind price would be invented precision.
+Leave-one-out residuals give the 80% conformal band: **×11.43** pooled (90%: ×30.75). But
+the residuals do not spread evenly: the smallest third of protocols (by TVL) has an 80%
+band of **×21.81**, the middle third **×7.50** and the largest third **×10.83**, with the
+tercile cutoffs at TVL $11.8M and $79.4M. Radar-4 therefore carries a per-tercile band
+instead of the pooled one: every implied value on the board carries its own tercile's 80%
+interval in its detail view, e.g. Sentora Curator $90.3M → $8.3M – $977.5M (large tercile,
+×10.83). A per-category band was considered and left out: the category mean residuals range
+−0.43 to +0.47 but are not estimable precisely with 128 anchors, so a per-category price
+would be invented precision.
 
 ## Launch odds (a peer-record score, not a forecast)
 
 A logistic fit on all 758 protocols. The outcome is "records a token in this snapshot";
-the features are log10(TVL), age in years and seven-day growth clamped to [−80, 200].
-Coefficients are standardised (gradient descent, L2 0.05, 3,000 iterations):
+the features are log10(TVL), age in years, seven-day growth clamped to [−80, 200], chain
+count as log10(1 + chains), and the protocol's category token rate — the share of protocols
+in its category that record a token, smoothed toward the global rate (categories with fewer
+than 5 members fall back to the global rate). Coefficients are standardised (iteratively
+reweighted least squares):
 
 | term | coefficient |
 | --- | --- |
-| intercept | −1.5305 |
-| log10(TVL) | −0.0876 |
-| age (years) | +0.3145 |
-| 7-day growth | −0.4308 |
+| intercept | −1.6678 |
+| log10(TVL) | −0.1480 |
+| age (years) | +0.3037 |
+| 7-day growth | −0.5201 |
+| chain count | +0.2452 |
+| category token rate | +0.6195 |
 
-In-sample AUC 0.617; 5-fold cross-validated AUC 0.606 (folds 0.474, 0.658, 0.660, 0.553,
-0.683). Median odds across the board: 0.1505. The odds rise with age because older protocols
-have had more time to launch — that is why they are labelled a peer-record score, not a
-forecast: a protocol still pre-token at its age is scored on its profile, not predicted to
-launch.
+In-sample AUC 0.723; 5-fold cross-validated AUC **0.677** (folds 0.565, 0.747, 0.683, 0.694,
+0.697), up from 0.606 for radar-3's three-feature score. The cross-validation is strict:
+each fold's category rates and standardisation come from its training rows only, so no
+fold sees the category rate of the rows it scores. Median odds across the board: 0.1157.
+The odds rise with age because older protocols have had more time to launch — that is why
+they are labelled a peer-record score, not a forecast: a protocol still pre-token at its age
+is scored on its profile, not predicted to launch.
 
 ## Expected value
 
@@ -142,10 +178,11 @@ expected_value = implied_value x launch_odds x (deposit_usd / tvl_usd)
 
 The farmer's pro-rata slice of the implied value at the plan's deposit. It is a model
 construct, not a forecast: it assumes no airdrop split beyond that share. The best expected
-value on the board is Monarq at $32.87 per farmer (ranked 196th by implied value); the top
-implied rows carry only $8.52–$17.99 of expected value, because their TVL is enormous
-relative to their implied value and odds. The board stays sorted by implied value, as the
-gate requires; expected value is a column with its own sort.
+value on the board is Mezzanine at $32.77 per farmer (ranked 191st by implied value); the
+top implied rows carry only $2.34–$4.25 of expected value, because their TVL is enormous
+relative to their implied value and odds — the new odds model scores the giants lower than
+radar-3 did (Sentora Curator 2.9% against 10.4%). The board stays sorted by implied value,
+as the gate requires; expected value is a column with its own sort.
 
 ## Farm plans
 
@@ -185,8 +222,25 @@ against active minutes only. Each plan ends in a verdict:
 - "Pays for its gas at the $50 minimum deposit" (D* below $50);
 - "Needs $Y to break even — above the $2,500 cap" (D* above the cap).
 
-181 of 197 plans break even at or below the $2,500 cap; the 16 that do not say so in their
-verdict.
+166 of 197 plans break even at or below the $2,500 cap; the 31 that do not say so in their
+verdict. (Radar-3 broke even on 181: the new odds model scores the giants lower, so fewer
+plans clear the cap — the verdicts say so instead of hiding it.)
+
+### Verdict codes and exit triggers
+
+Each row carries a verdict code, read off its own break-even deposit:
+
+- **FARM** — breaks even at a $250 stake or less (22 rows);
+- **THIN** — breaks even, but needs a bigger stake than $250 (144 rows);
+- **SKIP** — cannot break even inside the $2,500 cap (31 rows).
+
+It is a capital verdict, not a profit forecast: the deposit is sized to break even, so net
+at the sized deposit is near zero by construction, and a $/hour verdict on that deposit
+would say nothing. The board's Verdict column sorts FARM above THIN above SKIP.
+
+Each row also carries an exit trigger: leave if TVL falls below half its snapshot level
+(a 50% drawdown), with the category peers' 25th-percentile TVL shown as context (categories
+with fewer than 4 ranked peers use the whole board's 25th percentile).
 
 ## Outputs
 
@@ -202,6 +256,6 @@ odds model, the integrity counts and the full 758-row audit ledger), copies `das
 - "Records no token" is what DefiLlama records, not proof a protocol has none.
 - Implied value is an estimate from TVL alone. It is not a price, not a prediction that a
   token will be issued, and not financial advice. The fit is weak (R² 0.194) and the 80%
-  band is ×11.43 wide.
-- Launch odds are a peer-record score with a cross-validated AUC of 0.606. Expected value is
+  band is ×11.43 wide pooled — ×21.81 for the smallest third of protocols.
+- Launch odds are a peer-record score with a cross-validated AUC of 0.677. Expected value is
   a model construct built on those odds.
