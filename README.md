@@ -9,15 +9,23 @@ ranks the 197 pre-token protocols that pass the house's product rule by an impli
 shows a reader how to farm each one. The implied value is a model, not a price and not a
 prediction that a token will be issued.
 
-- **Model (radar-2):** `implied = round(TVL x 0.20 x growth x maturity)`, where 0.20 is the
-  median market-cap-to-TVL ratio of the 129 live-token protocols in the same snapshot, growth
-  is the seven-day TVL change (upside at 0.7, downside at 1.0, clamped -80% to +200%), and
-  maturity rises with the time a protocol has run with no token (0.65 to 1.00 over four
-  years). See `METHODOLOGY.md`.
+- **Model (radar-3, fitted):** `log10(market cap) = 3.0247 + 0.5223 x log10(TVL)`, ordinary
+  least squares on the 128 live-token protocols with a positive market cap in the same
+  snapshot (R² 0.194). Growth, maturity and category terms were tested and dropped — each
+  made leave-one-out error worse. Blind tests: leave-one-out ×1.11 and walk-forward ×1.18
+  better than the snapshot's own median multiple (0.2049). Every implied value carries its
+  80% conformal range (×11.43 wide). See `METHODOLOGY.md`.
+- **Launch odds and expected value:** a logistic fit on all 758 protocols scores each row's
+  launch odds from log TVL, age and seven-day growth (5-fold cross-validated AUC 0.606).
+  Expected value = implied value × odds × the farmer's pro-rata share at the plan's deposit.
+  Best on the board: Monarq at $32.87 per farmer.
 - **Board:** all 40 watchlist protocols plus 157 early rows below the $50M floor; live-token
-  protocols are set aside in their own view with market caps.
+  protocols are set aside in their own view with market caps; an audit ledger accounts for
+  all 758 protocols. The dashboard recomputes the board live and self-checks it on the cover.
 - **Farm plans:** 8 steps per protocol, derived from its category, chains, TVL and age, each
-  with its cost and time.
+  with its cost and time. Deposits are sized to minimum viable capital ($50–$2,500) and each
+  plan is costed in $/hour with a break-even verdict — 181 of 197 break even at or below the
+  cap.
 
 Built for the make.fun bounty "Build the best token launch radar" (token-radar-01).
 

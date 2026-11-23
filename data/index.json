@@ -1,78 +1,93 @@
 {
-  "competition": "token-radar-01",
-  "title": "Build the best token launch radar",
-  "model_version": "radar-2",
-  "snapshot_as_of": "2026-11-14",
-  "snapshot_source": "DefiLlama https://api.llama.fi/protocols",
-  "generated_at_utc": "2026-11-23T10:31:21.186Z",
   "board": {
-    "rows": 197,
-    "watchlist_rows": 40,
     "early_rows": 157,
-    "top_implied_value_usd": 420289620,
+    "fit": {
+      "anchors": 128,
+      "conformal80_factor": 11.43,
+      "intercept": 3.0247,
+      "loo_multiple": 1.11,
+      "r2": 0.1939,
+      "slope": 0.5223,
+      "walk_forward_multiple": 1.18
+    },
+    "odds": {
+      "cv_auc": 0.606,
+      "median": 0.1505
+    },
+    "rows": 197,
     "top_10": [
       {
-        "rank": 1,
-        "slug": "steakhouse-financial",
-        "name": "Steakhouse Financial",
-        "implied_value_usd": 420289620
-      },
-      {
-        "rank": 2,
-        "slug": "sentora-curator",
+        "implied_value_usd": 90258539,
         "name": "Sentora Curator",
-        "implied_value_usd": 419128745
+        "rank": 1,
+        "slug": "sentora-curator"
       },
       {
-        "rank": 3,
-        "slug": "gauntlet",
+        "implied_value_usd": 90196906,
+        "name": "Steakhouse Financial",
+        "rank": 2,
+        "slug": "steakhouse-financial"
+      },
+      {
+        "implied_value_usd": 67425794,
         "name": "Gauntlet",
-        "implied_value_usd": 255900487
+        "rank": 3,
+        "slug": "gauntlet"
       },
       {
-        "rank": 4,
-        "slug": "veda",
+        "implied_value_usd": 67106573,
         "name": "Veda",
-        "implied_value_usd": 229841942
+        "rank": 4,
+        "slug": "veda"
       },
       {
-        "rank": 5,
-        "slug": "usdd",
+        "implied_value_usd": 54665752,
         "name": "USDD",
-        "implied_value_usd": 163462609
+        "rank": 5,
+        "slug": "usdd"
       },
       {
-        "rank": 6,
-        "slug": "upshift",
-        "name": "Upshift",
-        "implied_value_usd": 86633609
-      },
-      {
-        "rank": 7,
-        "slug": "polymarket-international",
-        "name": "Polymarket International",
-        "implied_value_usd": 63345981
-      },
-      {
-        "rank": 8,
-        "slug": "nonce-capital",
+        "implied_value_usd": 37526715,
         "name": "Nonce Capital",
-        "implied_value_usd": 61288447
+        "rank": 6,
+        "slug": "nonce-capital"
       },
       {
+        "implied_value_usd": 36962044,
+        "name": "Upshift",
+        "rank": 7,
+        "slug": "upshift"
+      },
+      {
+        "implied_value_usd": 31881331,
+        "name": "Bittensor dTAO",
+        "rank": 8,
+        "slug": "bittensor-dtao"
+      },
+      {
+        "implied_value_usd": 29314123,
+        "name": "Polymarket International",
         "rank": 9,
-        "slug": "cian-yield-layer",
-        "name": "CIAN Yield Layer",
-        "implied_value_usd": 47703264
+        "slug": "polymarket-international"
       },
       {
-        "rank": 10,
-        "slug": "onre",
+        "implied_value_usd": 28768614,
         "name": "OnRe",
-        "implied_value_usd": 47417594
+        "rank": 10,
+        "slug": "onre"
       }
-    ]
+    ],
+    "top_expected_value": {
+      "expected_value_usd": 32.87,
+      "name": "Monarq",
+      "rank_by_implied": 196,
+      "slug": "monarq"
+    },
+    "top_implied_value_usd": 90258539,
+    "watchlist_rows": 40
   },
+  "competition": "token-radar-01",
+  "dossier_bytes": 779929,
   "files": [
     "main.ts",
     "lib/model.ts",
@@ -94,14 +109,18 @@
     ".makefun/owner.json"
   ],
   "gate_local": {
-    "dashboard_files": "pass",
     "board_file": "pass",
-    "sorted_by_value": "pass",
     "coverage": "pass",
+    "dashboard_files": "pass",
+    "dossier_matches": "pass",
     "farm_steps": "pass",
     "screenshots": "pass",
-    "dossier_matches": "pass"
+    "sorted_by_value": "pass"
   },
-  "dossier_bytes": 700293,
-  "note": "Local gate mirror only; the sealed scorer grades on the server. Not yet submitted."
+  "generated_at_utc": "2026-11-23T13:44:00Z",
+  "model_version": "radar-3",
+  "note": "Local gate mirror only; the sealed scorer grades on the server. Not yet submitted.",
+  "snapshot_as_of": "2026-11-14",
+  "snapshot_source": "DefiLlama https://api.llama.fi/protocols",
+  "title": "Build the best token launch radar"
 }
