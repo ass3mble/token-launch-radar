@@ -8,3 +8,4 @@ rm -rf out
 mkdir -p out
 MAKEFUN_OUTPUT_DIR=out node main.ts --input "$SNAPSHOT"
 node scripts/check-gate.mjs out "$SNAPSHOT"
+node scripts/verify-bands.mjs "$SNAPSHOT" out/data.js

@@ -56,8 +56,14 @@ replays are byte-identical. Dossier 790,948 bytes; dashboard source
 - `screenshots/` — 1-board.png, 2-detail.png, 3-filtered.png at
   1440x900.
 - `scripts/check-gate.mjs` — local mirror of the gate's seven rows.
+- `scripts/verify-bands.mjs` — independently recomputes the per-kind
+  conformal bands from the snapshot and checks them against the
+  shipped fit.
 - `STRATEGY.md`, `METHODOLOGY.md` — what the radar bets on and how every
   number is computed.
+- `VERIFICATION.md` — how v5 was checked before submission: the replay
+  log, the gate mirror, the screenshots, the sizes and the band
+  calibration.
 - `data/index.json` — the headline numbers, generated from the actual
   outputs.
 

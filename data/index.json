@@ -133,11 +133,13 @@
     "STRATEGY.md",
     "METHODOLOGY.md",
     "README.md",
+    "VERIFICATION.md",
     "LICENSE",
     "data/index.json",
     "action_log.jsonl",
     "replay.sh",
     "scripts/check-gate.mjs",
+    "scripts/verify-bands.mjs",
     ".makefun/owner.json"
   ],
   "gate_local": {
