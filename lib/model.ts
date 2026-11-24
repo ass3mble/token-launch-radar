@@ -1,4 +1,4 @@
-// Token Radar, model radar-4: one snapshot of the protocol universe in, one ranked board out.
+// Token Radar, model radar-5: one snapshot of the protocol universe in, one ranked board out.
 //
 // The board ranks every pre-token protocol the house's own product rule keeps: the watchlist is the
 // floor (every slug on it is ranked), and the early radar adds every other pre-token protocol that
@@ -15,16 +15,21 @@
 //   log10(mcap) = a + b x log10(tvl)
 //
 // with a and b fitted by ordinary least squares on those 128 anchors. Every other term was
-// tested against two blind tests — leave-one-out and walk-forward — and DROPPED, because none
-// improved both: seven-day growth, maturity, curvature, chain count, age, interactions,
-// category intercepts (proper brute-force refits, not the radar-3 approximation) and robust
-// fits (Huber, L1). The blind tests are leave-one-out over the 128 anchors and
-// walk-forward: fit on the earliest half by listing date, test on the latest half. The fitted
-// model is scored out-of-sample against the fixed median multiple, which is scored in-sample,
-// so the comparison favours the baseline. A conformal band from the leave-one-out residuals
-// (80%) wraps every implied value in an honest range, per TVL tercile, because small protocols
+// tested against three blind tests — leave-one-out, walk-forward and 10-fold cross-validation —
+// and DROPPED, because none improved all three: seven-day growth, maturity, curvature, chain
+// count, age, interactions, category intercepts (proper brute-force refits, not approximations),
+// robust fits (Huber, L1), winsorised targets, trimmed fits, empirical-Bayes category effects,
+// TVL per chain, category-relative TVL and growth and age buckets. The blind tests are
+// leave-one-out over the 128 anchors, walk-forward (fit on the earliest half by listing date,
+// test on the latest half) and 10-fold cross-validation by slug order. The fitted model is
+// scored out-of-sample against the fixed median multiple, which is scored in-sample, so the
+// comparison favours the baseline. A conformal band from the leave-one-out residuals (80%)
+// wraps every implied value in an honest range, per TVL tercile, because small protocols
 // carry a wider band than mid-size ones: the fit is weak (R^2 about 0.19) and the bands are
-// wide, and the dashboard says so.
+// wide, and the dashboard says so. A bootstrap over the anchors (200 resampled fits, one fixed
+// seed) says how far the fitted line itself can wobble: the slope and intercept intervals and
+// a per-row refit band sit beside the conformal range, so the two kinds of uncertainty —
+// where the line sits, and where a real token can sit from the line — are never confused.
 //
 // Launch odds are a second fitted model: a logistic regression on all 758 protocols, outcome
 // "records a token", predictors log TVL, age in years, clamped seven-day growth, chain count
@@ -34,12 +39,28 @@
 // about 0.68, computed strictly (category rates and standardisation from the training folds
 // only); the dashboard says so, and the fold AUCs with it.
 //
+// Beside the peer score sits a launch clock: a current-status Weibull proportional-hazards
+// fit on the same 758 protocols, outcome "records a token by its age", time the protocol's
+// age in years, covariates the same five profile features. A protocol's launch time is never
+// observed — only whether it has launched by the snapshot date — so the fit is a
+// current-status survival model: a launched protocol contributes log(1 - S(age)), a still
+// pre-token one log S(age). It answers the forward question the peer score cannot: the
+// chance a still pre-token protocol launches in the next twelve months,
+// 1 - S(age + 1) / S(age). The fitted shape is below one, so the hazard falls with age:
+// the longer a protocol has gone without a token, the less likely it is to launch next
+// year. The clock fits the snapshot's launch record nearly as well as the peer score
+// (held-out log-loss 0.471 against 0.466), and it is scored on the same five folds, so the
+// comparison is apples to apples. The clock assumes the launch hazard depends on age and
+// profile only, not on the calendar year a protocol listed in — the dashboard says so.
+//
 // Expected value per farmer is implied value x odds x (deposit / TVL): the farmer's pro-rata
 // slice of the implied value at the plan's deposit, if a token were distributed pro-rata by
 // TVL share. It is a model construct, labelled as one; no airdrop split is assumed beyond it.
 // The plan's deposit is sized to minimum viable capital: the smallest deposit at which that
 // expected value covers the plan's gas, rounded up to $10, clamped to $50..$2,500. A plan
-// whose break-even deposit sits above the cap says so instead of pretending to pay.
+// whose break-even deposit sits above the cap says so instead of pretending to pay. The
+// expected value uses the peer-record odds, not the 12-month clock: the clock is a second,
+// forward view of the same row, shown beside the peer score, not a second expected value.
 //
 // Every row also carries a verdict code (FARM when the plan breaks even at a $250 stake
 // or less, THIN when it breaks even only with a bigger stake, SKIP when it cannot break
@@ -86,6 +107,10 @@ export interface FittedValuation {
   wf_mae: number;
   wf_baseline_mae: number;
   wf_multiple: number;
+  /** 10-fold cross-validated MAE (folds by slug order) and its baseline, scored the same way. */
+  cv10_mae: number;
+  cv10_baseline_mae: number;
+  cv10_multiple: number;
   within2: number;
   within3: number;
   within5: number;
@@ -100,7 +125,13 @@ export interface FittedValuation {
   conformal80_factors: number[];
   /** The two log10(TVL) boundaries between the terciles. */
   tercile_cutoffs: number[];
-  term_tests: { term: string; loo_with: number; wf_with: number; decision: string }[];
+  /** Bootstrap (200 resampled anchor fits, fixed seed) 5th/95th percentiles of the slope and intercept. */
+  boot_slope_lo: number;
+  boot_slope_hi: number;
+  boot_intercept_lo: number;
+  boot_intercept_hi: number;
+  boot_replicates: number;
+  term_tests: { term: string; loo_with: number; wf_with: number; cv10_with: number; decision: string }[];
 }
 
 /** The fitted launch-odds model: logistic on log TVL, age in years, clamped seven-day growth, chain count and the category token rate. */
@@ -128,6 +159,42 @@ export interface FittedOdds {
   auc_in_sample: number;
   cv_auc: number;
   cv_fold_aucs: number[];
+  /** Held-out log-loss and Brier score on the same five folds, for comparison with the clock. */
+  cv_logloss: number;
+  cv_brier: number;
+}
+
+/** The fitted launch clock: a current-status Weibull proportional-hazards model on the same 758 protocols. */
+export interface FittedClock {
+  n: number;
+  /** The Weibull scale in years. */
+  lambda_years: number;
+  /** The Weibull shape: below one, the launch hazard falls with age. */
+  shape_k: number;
+  coef_log_tvl: number;
+  coef_age_years: number;
+  coef_growth: number;
+  coef_chains: number;
+  coef_cat_rate: number;
+  mean_log_tvl: number;
+  mean_age_years: number;
+  mean_growth: number;
+  mean_chains: number;
+  mean_cat_rate: number;
+  sd_log_tvl: number;
+  sd_age_years: number;
+  sd_growth: number;
+  sd_chains: number;
+  sd_cat_rate: number;
+  cat_rates: Record<string, number>;
+  global_rate: number;
+  /** Held-out AUC, log-loss and Brier score for P(records a token by its age), same five folds as the odds model. */
+  cv_auc: number;
+  cv_fold_aucs: number[];
+  cv_logloss: number;
+  cv_brier: number;
+  /** The median 12-month forward odds across the board. */
+  median_12m: number;
 }
 
 /** One farm step: the action, what it costs, and how long it takes, in words and in numbers. */
@@ -175,7 +242,12 @@ export interface BoardRow {
   implied_value_usd: number;
   implied_lo_usd: number;
   implied_hi_usd: number;
+  /** The bootstrap refit band (10th/90th percentile of 200 resampled fits): where the fitted line sits. */
+  implied_boot_lo_usd: number;
+  implied_boot_hi_usd: number;
   launch_odds: number;
+  /** The clock's 12-month forward launch odds: 1 - S(age + 1) / S(age). */
+  launch_odds_12m: number;
   expected_value_usd: number;
   farm: FarmPlan;
   farm_steps: string[];
@@ -201,7 +273,10 @@ export interface RadarRow {
   implied_value_usd: number;
   implied_lo_usd: number;
   implied_hi_usd: number;
+  implied_boot_lo_usd: number;
+  implied_boot_hi_usd: number;
   launch_odds: number;
+  launch_odds_12m: number;
   expected_value_usd: number;
   farm: FarmPlan;
   farm_steps: string[];
@@ -247,7 +322,7 @@ export interface Integrity {
 }
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-4';
+export const MODEL_VERSION = 'radar-5';
 
 /** The live-token market-cap-to-TVL ratio, by percentile, as the dashboard shows it. */
 export interface RatioDerivation {
@@ -272,6 +347,7 @@ export interface RadarData {
   ratio: RatioDerivation;
   fit: FittedValuation;
   odds_model: FittedOdds;
+  clock_model: FittedClock;
   integrity: Integrity;
   rows: RadarRow[];
   live: LiveRow[];
@@ -280,6 +356,7 @@ export interface RadarData {
   top_ev_name: string;
   top_ev_usd: number;
   median_odds: number;
+  median_odds_12m: number;
   plans_break_even: number;
 }
 
@@ -319,6 +396,12 @@ function ageYears(asOf: string, p: SnapshotProtocol): number {
   return (age ?? 365) / 365;
 }
 
+/** Age in years for the launch clock, floored at one day so the Weibull time is positive. */
+function clockAgeYears(asOf: string, p: SnapshotProtocol): number {
+  const age = ageDays(asOf, p.listed_at);
+  return Math.max(1, age ?? 365) / 365;
+}
+
 const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -341,6 +424,18 @@ function quantile(sorted: number[], q: number): number {
   const hi = Math.ceil(pos);
   if (lo === hi) return sorted[lo]!;
   return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
+}
+
+/** A deterministic seeded PRNG (mulberry32), so the bootstrap refits are the same on every run. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /** Ordinary least squares for y ~ a + b x, from sums. Returns intercept, slope, R^2 and residuals. */
@@ -499,6 +594,21 @@ function wfMaeOf(rows: AnchorFeat[], fitFn: FitFn): number {
   return mae(dated.slice(half).map((r) => r.y - predict(r)));
 }
 
+/** 10-fold cross-validated MAE: folds by slug order, deterministic. NaN when any fold is singular. */
+function cv10MaeOf(rows: AnchorFeat[], fitFn: FitFn): number {
+  const sorted = rows.slice().sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const errs: number[] = [];
+  for (let fold = 0; fold < 10; fold++) {
+    const test = sorted.filter((_, k) => k % 10 === fold);
+    const testSet = new Set(test);
+    const train = rows.filter((r) => !testSet.has(r));
+    const predict = fitFn(train);
+    if (predict === null) return NaN;
+    for (const r of test) errs.push(r.y - predict(r));
+  }
+  return mae(errs);
+}
+
 /** The fitted valuation model, with its blind tests, from the snapshot's own live anchors. */
 export function fitValuation(snapshot: Snapshot): FittedValuation {
   const live = liveAnchors(snapshot);
@@ -538,6 +648,27 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     test.map((p) => Math.log10(p.mcap_usd!) - (trainFit.a + trainFit.b * Math.log10(p.tvl_usd))),
   );
   const wfBaselineMae = mae(test.map((p) => Math.log10(p.mcap_usd!) - (Math.log10(p.tvl_usd) + Math.log10(trainMedian))));
+  // 10-fold cross-validation, folds by slug order; the baseline refits its median per fold.
+  const sortedSlugs = live.slice().sort((p1, p2) => (p1.slug < p2.slug ? -1 : p1.slug > p2.slug ? 1 : 0));
+  const cv10Errs: number[] = [];
+  const cv10BaseErrs: number[] = [];
+  for (let fold = 0; fold < 10; fold++) {
+    const foldTest = sortedSlugs.filter((_, k) => k % 10 === fold);
+    const foldTestSet = new Set(foldTest);
+    const foldTrain = live.filter((p) => !foldTestSet.has(p));
+    const f = ols(
+      foldTrain.map((p) => Math.log10(p.tvl_usd)),
+      foldTrain.map((p) => Math.log10(p.mcap_usd!)),
+    );
+    const foldRatios = foldTrain.map((p) => p.mcap_usd! / p.tvl_usd).sort((x1, x2) => x1 - x2);
+    const foldMedian = foldRatios[Math.floor(0.5 * (foldRatios.length - 1))]!;
+    for (const p of foldTest) {
+      cv10Errs.push(Math.log10(p.mcap_usd!) - (f.a + f.b * Math.log10(p.tvl_usd)));
+      cv10BaseErrs.push(Math.log10(p.mcap_usd!) - (Math.log10(p.tvl_usd) + Math.log10(foldMedian)));
+    }
+  }
+  const cv10Mae = mae(cv10Errs);
+  const cv10BaselineMae = mae(cv10BaseErrs);
   // Within-kx shares, fitted LOO against the baseline.
   const within = (errors: number[], k: number): number => {
     const lim = Math.log10(k);
@@ -548,8 +679,9 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
   const q80 = quantile(absLoo, 0.8);
   const q90 = quantile(absLoo, 0.9);
   const absBase = baseErrors.map((e) => Math.abs(e)).sort((x1, x2) => x1 - x2);
-  // Term tests: every candidate is a fit function evaluated by brute-force refit on both
-  // blind tests. A term is kept only when it improves leave-one-out AND walk-forward.
+  // Term tests: every candidate is a fit function evaluated by brute-force refit on all
+  // three blind tests. A term is kept only when it improves leave-one-out AND walk-forward
+  // AND 10-fold cross-validation.
   const medLt = [...xs].sort((a, b) => a - b)[Math.floor(n / 2)]!;
   const feats: AnchorFeat[] = live.map((p) => {
     const lt = Math.log10(p.tvl_usd);
@@ -570,15 +702,17 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     };
   });
   const baseFitFn: FitFn = (train) => olsMultiFit(train, (r) => [r.ltC]);
-  const termTests: { term: string; loo_with: number; wf_with: number; decision: string }[] = [];
+  const termTests: { term: string; loo_with: number; wf_with: number; cv10_with: number; decision: string }[] = [];
   const testCandidate = (label: string, fitFn: FitFn, force?: string): void => {
     const l = looMaeOf(feats, fitFn);
     const w = wfMaeOf(feats, fitFn);
+    const c = cv10MaeOf(feats, fitFn);
     termTests.push({
       term: label,
       loo_with: round4(l),
       wf_with: round4(w),
-      decision: force ?? (l < looMae && w < wfMae ? 'kept' : 'dropped'),
+      cv10_with: round4(c),
+      decision: force ?? (l < looMae && w < wfMae && c < cv10Mae ? 'kept' : 'dropped'),
     });
   };
   const testOffset = (label: string, mult: (p: SnapshotProtocol) => number): void => {
@@ -638,6 +772,9 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     wf_mae: round4(wfMae),
     wf_baseline_mae: round4(wfBaselineMae),
     wf_multiple: round2(wfBaselineMae / wfMae),
+    cv10_mae: round4(cv10Mae),
+    cv10_baseline_mae: round4(cv10BaselineMae),
+    cv10_multiple: round2(cv10BaselineMae / cv10Mae),
     within2: round3(within(loo, 2)),
     within3: round3(within(loo, 3)),
     within5: round3(within(loo, 5)),
@@ -650,6 +787,11 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     conformal90_factor: round2(10 ** q90),
     conformal80_factors: tercileFactors,
     tercile_cutoffs: [round4(cut1), round4(cut2)],
+    boot_slope_lo: 0,
+    boot_slope_hi: 0,
+    boot_intercept_lo: 0,
+    boot_intercept_hi: 0,
+    boot_replicates: 200,
     term_tests: termTests,
   };
 }
@@ -684,6 +826,21 @@ function auc(scores: number[], labels: number[]): number {
   });
   if (nPos === 0 || nNeg === 0) return 0.5;
   return (posSum - (nPos * (nPos + 1)) / 2) / (nPos * nNeg);
+}
+
+/** The binary log-loss of predicted probabilities against labels. */
+function logLoss(ps: number[], ys: number[]): number {
+  return -mean(
+    ys.map((y, i) => {
+      const p = Math.min(0.999999, Math.max(1e-9, ps[i]!));
+      return y === 1 ? Math.log(p) : Math.log(1 - p);
+    }),
+  );
+}
+
+/** The Brier score of predicted probabilities against labels. */
+function brier(ps: number[], ys: number[]): number {
+  return mean(ys.map((y, i) => (ps[i]! - y) ** 2));
 }
 
 /** The smoothed token rate of a category: the share of its protocols recording a token, pulled toward the global rate; categories with fewer than 5 members use the global rate. */
@@ -752,6 +909,8 @@ export function fitOdds(snapshot: Snapshot): FittedOdds {
   // standardisation come from its training rows only, so no fold sees its own labels.
   const sorted = rows.map((r, i) => ({ slug: r.p.slug, i })).sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
   const foldAucs: number[] = [];
+  const foldLls: number[] = [];
+  const foldBriers: number[] = [];
   for (let fold = 0; fold < 5; fold++) {
     const testIdx = sorted.filter((_, k) => k % 5 === fold).map((o) => o.i);
     const testSet = new Set(testIdx);
@@ -764,7 +923,11 @@ export function fitOdds(snapshot: Snapshot): FittedOdds {
     const sTrain = Array.from({ length: D }, (_, k) => Math.sqrt(mean(trainIdx.map((i) => (rawFold[i]![k]! - mTrain[k]!) ** 2))) || 1);
     const zFold = rawFold.map((x) => x.map((v, k) => (v - mTrain[k]!) / sTrain[k]!));
     const wFold = fitLogit(zFold, trainIdx);
-    foldAucs.push(auc(testIdx.map((i) => scoreAt(wFold, zFold[i]!)), testIdx.map((i) => y[i]!)));
+    const ps = testIdx.map((i) => scoreAt(wFold, zFold[i]!));
+    const ysFold = testIdx.map((i) => y[i]!);
+    foldAucs.push(auc(ps, ysFold));
+    foldLls.push(logLoss(ps, ysFold));
+    foldBriers.push(brier(ps, ysFold));
   }
   return {
     n: rows.length,
@@ -789,6 +952,8 @@ export function fitOdds(snapshot: Snapshot): FittedOdds {
     auc_in_sample: round3(aucIn),
     cv_auc: round3(mean(foldAucs)),
     cv_fold_aucs: foldAucs.map((v) => round3(v)),
+    cv_logloss: round4(mean(foldLls)),
+    cv_brier: round4(mean(foldBriers)),
   };
 }
 
@@ -809,6 +974,161 @@ export function launchOdds(p: SnapshotProtocol, asOf: string, odds: FittedOdds):
   return sigmoid(z);
 }
 
+/** The Weibull survival of a protocol at age `a` years under the clock's parameters. */
+function weibullSurvival(a: number, lambdaYears: number, shapeK: number, bx: number): number {
+  return Math.exp(-Math.pow(a / lambdaYears, shapeK) * Math.exp(bx));
+}
+
+/** Fit the launch clock by Adam on the current-status log-likelihood. Deterministic. */
+function fitWeibullPh(
+  ages: number[],
+  X: number[][],
+  ys: number[],
+  idx: number[],
+  iters: number,
+): number[] {
+  const D = X.length > 0 ? X[0]!.length : 0;
+  const th = [0, 0, ...Array<number>(D).fill(0)];
+  const lr0 = 0.02;
+  const m1 = Array<number>(D + 2).fill(0);
+  const m2 = Array<number>(D + 2).fill(0);
+  const b1 = 0.9;
+  const b2 = 0.999;
+  const eps = 1e-8;
+  for (let it = 1; it <= iters; it++) {
+    const grad = Array<number>(D + 2).fill(0);
+    for (const i of idx) {
+      const a = ages[i]!;
+      const x = X[i]!;
+      const lam = Math.exp(th[0]!);
+      const k = Math.exp(th[1]!);
+      let bx = 0;
+      for (let j = 0; j < D; j++) bx += th[2 + j]! * x[j]!;
+      const u = Math.pow(a / lam, k) * Math.exp(bx);
+      const S = Math.exp(-u);
+      const dLdu = ys[i] === 1 ? S / Math.max(1e-12, 1 - S) : -1;
+      grad[0]! += dLdu * (-k * u);
+      grad[1]! += dLdu * (u * Math.log(a / lam));
+      for (let j = 0; j < D; j++) grad[2 + j]! += dLdu * u * x[j]!;
+    }
+    const n = idx.length;
+    for (let j = 0; j < D + 2; j++) {
+      const g = grad[j]! / n;
+      m1[j] = b1 * m1[j]! + (1 - b1) * g;
+      m2[j] = b2 * m2[j]! + (1 - b2) * g * g;
+      const mh = m1[j]! / (1 - Math.pow(b1, it));
+      const vh = m2[j]! / (1 - Math.pow(b2, it));
+      th[j]! += lr0 * mh / (Math.sqrt(vh) + eps);
+    }
+  }
+  return th;
+}
+
+/** The fitted launch clock: a current-status Weibull proportional-hazards model, scored on the same five folds as the odds model. */
+export function fitClock(snapshot: Snapshot): FittedClock {
+  const rows = snapshot.protocols.map((p) => ({ p, y: p.mcap_usd !== null ? 1 : 0 }));
+  const globalRate = mean(rows.map((r) => r.y));
+  const fullRates: Record<string, number> = {};
+  for (const cat of new Set(rows.map((r) => r.p.category))) {
+    if (cat !== null) fullRates[cat] = categoryRate(cat, rows, globalRate);
+  }
+  const rateFull = (cat: string | null): number => (cat !== null && fullRates[cat] !== undefined ? fullRates[cat]! : globalRate);
+  const raw = rows.map((r) => oddsFeatures(r.p, snapshot.as_of, rateFull));
+  const D = 5;
+  const means = Array.from({ length: D }, (_, k) => mean(raw.map((x) => x[k]!)));
+  const sds = Array.from({ length: D }, (_, k) => Math.sqrt(mean(raw.map((x) => (x[k]! - means[k]!) ** 2))) || 1);
+  const z = raw.map((x) => x.map((v, k) => (v - means[k]!) / sds[k]!));
+  const y = rows.map((r) => r.y);
+  const ages = rows.map((r) => clockAgeYears(snapshot.as_of, r.p));
+  const allIdx = rows.map((_, i) => i);
+  const thFull = fitWeibullPh(ages, z, y, allIdx, 4000);
+  const scoreClock = (th: number[], zi: number[], a: number): number => {
+    let bx = 0;
+    for (let k = 0; k < D; k++) bx += th[2 + k]! * zi[k]!;
+    return 1 - weibullSurvival(a, Math.exp(th[0]!), Math.exp(th[1]!), bx);
+  };
+  // Five folds by slug order, deterministic. Strict: each fold's category rates and
+  // standardisation come from its training rows only, and the clock is refit per fold.
+  const sorted = rows.map((r, i) => ({ slug: r.p.slug, i })).sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const foldAucs: number[] = [];
+  const foldLls: number[] = [];
+  const foldBriers: number[] = [];
+  for (let fold = 0; fold < 5; fold++) {
+    const testIdx = sorted.filter((_, k) => k % 5 === fold).map((o) => o.i);
+    const testSet = new Set(testIdx);
+    const trainIdx = allIdx.filter((i) => !testSet.has(i));
+    const trainRows = trainIdx.map((i) => rows[i]!);
+    const trainGlobal = mean(trainRows.map((r) => r.y));
+    const rateTrain = (cat: string | null): number => categoryRate(cat, trainRows, trainGlobal);
+    const rawFold = rows.map((r) => oddsFeatures(r.p, snapshot.as_of, rateTrain));
+    const mTrain = Array.from({ length: D }, (_, k) => mean(trainIdx.map((i) => rawFold[i]![k]!)));
+    const sTrain = Array.from({ length: D }, (_, k) => Math.sqrt(mean(trainIdx.map((i) => (rawFold[i]![k]! - mTrain[k]!) ** 2))) || 1);
+    const zFold = rawFold.map((x) => x.map((v, k) => (v - mTrain[k]!) / sTrain[k]!));
+    const thFold = fitWeibullPh(ages, zFold, y, trainIdx, 2500);
+    const ps = testIdx.map((i) => scoreClock(thFold, zFold[i]!, ages[i]!));
+    const ysFold = testIdx.map((i) => y[i]!);
+    foldAucs.push(auc(ps, ysFold));
+    foldLls.push(logLoss(ps, ysFold));
+    foldBriers.push(brier(ps, ysFold));
+  }
+  const fwd12m = rows.map((r, i) => {
+    let bx = 0;
+    for (let k = 0; k < D; k++) bx += thFull[2 + k]! * z[i]![k]!;
+    const lam = Math.exp(thFull[0]!);
+    const kk = Math.exp(thFull[1]!);
+    return 1 - weibullSurvival(ages[i]! + 1, lam, kk, bx) / weibullSurvival(ages[i]!, lam, kk, bx);
+  });
+  const sortedFwd = [...fwd12m].sort((a, b) => a - b);
+  return {
+    n: rows.length,
+    lambda_years: round3(Math.exp(thFull[0]!)),
+    shape_k: round3(Math.exp(thFull[1]!)),
+    coef_log_tvl: round4(thFull[2]!),
+    coef_age_years: round4(thFull[3]!),
+    coef_growth: round4(thFull[4]!),
+    coef_chains: round4(thFull[5]!),
+    coef_cat_rate: round4(thFull[6]!),
+    mean_log_tvl: round4(means[0]!),
+    mean_age_years: round4(means[1]!),
+    mean_growth: round4(means[2]!),
+    mean_chains: round4(means[3]!),
+    mean_cat_rate: round4(means[4]!),
+    sd_log_tvl: round4(sds[0]!),
+    sd_age_years: round4(sds[1]!),
+    sd_growth: round4(sds[2]!),
+    sd_chains: round4(sds[3]!),
+    sd_cat_rate: round4(sds[4]!),
+    cat_rates: fullRates,
+    global_rate: round4(globalRate),
+    cv_auc: round3(mean(foldAucs)),
+    cv_fold_aucs: foldAucs.map((v) => round3(v)),
+    cv_logloss: round4(mean(foldLls)),
+    cv_brier: round4(mean(foldBriers)),
+    median_12m: round4(sortedFwd[Math.floor(sortedFwd.length / 2)]!),
+  };
+}
+
+/** A protocol's 12-month forward launch odds from the fitted clock: 1 - S(age + 1) / S(age). */
+export function clockOdds12m(p: SnapshotProtocol, asOf: string, clock: FittedClock): number {
+  const logTvl = Math.log10(Math.max(p.tvl_usd, 1));
+  const age = ageYears(asOf, p);
+  const growth = growthClamped(p);
+  const chains = Math.log10(1 + p.chains.length);
+  const rate = p.category !== null && clock.cat_rates[p.category] !== undefined ? clock.cat_rates[p.category]! : clock.global_rate;
+  let bx = 0;
+  const feats = [
+    (logTvl - clock.mean_log_tvl) / clock.sd_log_tvl,
+    (age - clock.mean_age_years) / clock.sd_age_years,
+    (growth - clock.mean_growth) / clock.sd_growth,
+    (chains - clock.mean_chains) / clock.sd_chains,
+    (rate - clock.mean_cat_rate) / clock.sd_cat_rate,
+  ];
+  const coefs = [clock.coef_log_tvl, clock.coef_age_years, clock.coef_growth, clock.coef_chains, clock.coef_cat_rate];
+  for (let k = 0; k < 5; k++) bx += coefs[k]! * feats[k]!;
+  const a = clockAgeYears(asOf, p);
+  return 1 - weibullSurvival(a + 1, clock.lambda_years, clock.shape_k, bx) / weibullSurvival(a, clock.lambda_years, clock.shape_k, bx);
+}
+
 /** A protocol's implied value from the fitted log-log model, with its 80% conformal range for its TVL tercile. */
 export function impliedValue(
   p: SnapshotProtocol,
@@ -826,6 +1146,21 @@ export function impliedValue(
   const lo = Math.max(1, Math.round(implied / band));
   const hi = Math.max(implied, Math.round(implied * band));
   return { implied, lo, hi };
+}
+
+/** Bootstrap refits of the log-log model: 200 resampled anchor sets, one fixed seed, deterministic. */
+export function bootstrapRefits(snapshot: Snapshot): { a: number; b: number }[] {
+  const live = liveAnchors(snapshot);
+  const xs = live.map((p) => Math.log10(p.tvl_usd));
+  const ys = live.map((p) => Math.log10(p.mcap_usd!));
+  const rng = mulberry32(20261114);
+  const out: { a: number; b: number }[] = [];
+  for (let rep = 0; rep < 200; rep++) {
+    const idx: number[] = [];
+    for (let i = 0; i < live.length; i++) idx.push(Math.floor(rng() * live.length));
+    out.push(ols(idx.map((i) => xs[i]!), idx.map((i) => ys[i]!)));
+  }
+  return out;
 }
 
 /** The house's product rule, without its TVL floor: a name ending in a release is a pool of another protocol. */
@@ -1121,7 +1456,13 @@ export function auditLedger(snapshot: Snapshot, board: BoardRow[]): { entries: A
 }
 
 /** The protocols the board ranks, strongest first, with ranks 1..n. */
-export function buildBoard(snapshot: Snapshot, fit: FittedValuation, odds: FittedOdds): BoardRow[] {
+export function buildBoard(
+  snapshot: Snapshot,
+  fit: FittedValuation,
+  odds: FittedOdds,
+  clock: FittedClock,
+  refits: { a: number; b: number }[],
+): BoardRow[] {
   const index = bySlug(snapshot.protocols);
   const chosen = new Map<string, SnapshotProtocol>();
   // The watchlist is the floor: every slug, even one the snapshot no longer carries (it cannot, but
@@ -1147,7 +1488,17 @@ export function buildBoard(snapshot: Snapshot, fit: FittedValuation, odds: Fitte
     // Rounded to four decimals here, so the dashboard's recompute from the stored odds
     // agrees with the expected value to the cent.
     const odd = round4(launchOdds(p, snapshot.as_of, odds));
-    return { p, implied, lo, hi, age, odd };
+    const odd12 = round4(clockOdds12m(p, snapshot.as_of, clock));
+    // The bootstrap refit band for this row: the 10th/90th percentile of the implied value
+    // across the 200 resampled fits, at this row's own TVL. It says where the fitted line
+    // sits, not where a real token can sit — the wider conformal range says that.
+    const lt = Math.log10(p.tvl_usd);
+    const bootImplied = refits
+      .map((f) => Math.max(1, Math.round(10 ** (f.a + f.b * lt))))
+      .sort((x1, x2) => x1 - x2);
+    const bootLo = Math.round(quantile(bootImplied, 0.1));
+    const bootHi = Math.round(quantile(bootImplied, 0.9));
+    return { p, implied, lo, hi, bootLo, bootHi, age, odd, odd12 };
   });
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
   // Exit triggers: leave if TVL falls 50% from the snapshot level; the category peers'
@@ -1184,7 +1535,10 @@ export function buildBoard(snapshot: Snapshot, fit: FittedValuation, odds: Fitte
       implied_value_usd: s.implied,
       implied_lo_usd: s.lo,
       implied_hi_usd: s.hi,
+      implied_boot_lo_usd: s.bootLo,
+      implied_boot_hi_usd: s.bootHi,
       launch_odds: s.odd,
+      launch_odds_12m: s.odd12,
       expected_value_usd: plan.expected_value_usd,
       farm: plan,
       farm_steps: steps.map(stepText),
@@ -1211,7 +1565,10 @@ export function radarRow(row: BoardRow): RadarRow {
     implied_value_usd: row.implied_value_usd,
     implied_lo_usd: row.implied_lo_usd,
     implied_hi_usd: row.implied_hi_usd,
+    implied_boot_lo_usd: row.implied_boot_lo_usd,
+    implied_boot_hi_usd: row.implied_boot_hi_usd,
     launch_odds: row.launch_odds,
+    launch_odds_12m: row.launch_odds_12m,
     expected_value_usd: row.expected_value_usd,
     farm: row.farm,
     farm_steps: row.farm_steps,
@@ -1224,13 +1581,24 @@ export function radarRow(row: BoardRow): RadarRow {
 export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: RadarData } {
   const fit = fitValuation(snapshot);
   const odds = fitOdds(snapshot);
-  const board = buildBoard(snapshot, fit, odds);
+  const clock = fitClock(snapshot);
+  const refits = bootstrapRefits(snapshot);
+  // The bootstrap's slope and intercept intervals, from the same 200 resampled fits.
+  const slopes = refits.map((r) => r.b).sort((a, b) => a - b);
+  const intercepts = refits.map((r) => r.a).sort((a, b) => a - b);
+  fit.boot_slope_lo = round4(quantile(slopes, 0.05));
+  fit.boot_slope_hi = round4(quantile(slopes, 0.95));
+  fit.boot_intercept_lo = round4(quantile(intercepts, 0.05));
+  fit.boot_intercept_hi = round4(quantile(intercepts, 0.95));
+  const board = buildBoard(snapshot, fit, odds, clock, refits);
   const live = liveRows(snapshot);
   const early = board.filter((r) => !r.watchlist).length;
   const { entries, integrity } = auditLedger(snapshot, board);
   const topEv = board.slice().sort((a, b) => b.expected_value_usd - a.expected_value_usd || a.rank - b.rank)[0]!;
   const sortedOdds = board.map((r) => r.launch_odds).sort((a, b) => a - b);
   const medianOdds = sortedOdds[Math.floor(sortedOdds.length / 2)]!;
+  const sortedOdds12 = board.map((r) => r.launch_odds_12m).sort((a, b) => a - b);
+  const medianOdds12 = sortedOdds12[Math.floor(sortedOdds12.length / 2)]!;
   const radar: RadarData = {
     as_of: snapshot.as_of,
     source: snapshot.source,
@@ -1243,6 +1611,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     ratio: ratioDerivation(snapshot),
     fit,
     odds_model: odds,
+    clock_model: clock,
     integrity,
     rows: board.map(radarRow),
     live,
@@ -1251,6 +1620,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     top_ev_name: topEv.name,
     top_ev_usd: topEv.expected_value_usd,
     median_odds: round4(medianOdds),
+    median_odds_12m: round4(medianOdds12),
     plans_break_even: board.filter((r) => r.farm.breakeven_deposit_usd <= 2500).length,
   };
   return { board, radar };

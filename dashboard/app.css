@@ -109,7 +109,7 @@ dialog.detail::backdrop { background: rgba(4, 7, 10, .7); }
 .detail-head p { margin: 0; color: var(--muted); }
 .close { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; height: fit-content; }
 .detail-section { padding: 10px 20px 12px; border-top: 1px solid var(--line); margin-top: 10px; }
-.equation { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+.equation { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0; }
 .equation > div { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .equation span { display: block; font-size: 12px; color: var(--muted); }
 .equation b { font-size: 15px; font-variant-numeric: tabular-nums; }

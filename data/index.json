@@ -9,15 +9,24 @@
       "r2": 0.1939,
       "slope": 0.5223,
       "walk_forward_multiple": 1.18,
+      "cv10_multiple": 1.12,
       "conformal80_factors": [
         21.81,
         7.5,
         10.83
-      ]
+      ],
+      "boot_slope_lo": 0.397,
+      "boot_slope_hi": 0.6517
     },
     "odds": {
       "cv_auc": 0.677,
       "median": 0.1157
+    },
+    "clock": {
+      "lambda_years": 46.745,
+      "shape_k": 0.503,
+      "cv_auc": 0.67,
+      "median_12m": 0.049
     },
     "rows": 197,
     "top_10": [
@@ -92,7 +101,7 @@
     "watchlist_rows": 40
   },
   "competition": "token-radar-01",
-  "dossier_bytes": 824550,
+  "dossier_bytes": 830446,
   "files": [
     "main.ts",
     "lib/model.ts",
@@ -122,8 +131,8 @@
     "screenshots": "pass",
     "sorted_by_value": "pass"
   },
-  "generated_at_utc": "2026-11-23T14:56:10Z",
-  "model_version": "radar-4",
+  "generated_at_utc": "2026-11-23T15:56:26Z",
+  "model_version": "radar-5",
   "note": "Local gate mirror only; the sealed scorer grades on the server. Not yet submitted.",
   "snapshot_as_of": "2026-11-14",
   "snapshot_source": "DefiLlama https://api.llama.fi/protocols",

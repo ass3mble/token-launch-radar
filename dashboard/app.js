@@ -1,11 +1,12 @@
-// Token Radar's dashboard, model radar-4. It reads window.RADAR (written beside dashboard/ by
+// Token Radar's dashboard, model radar-5. It reads window.RADAR (written beside dashboard/ by
 // main.ts) and renders the ranked board, a filterable table, a per-protocol detail view with the
 // model's own inputs and the protocol's farm plan, the live-token set kept apart, and a full
 // audit of all 758 snapshot protocols. No network: every byte it shows is in data.js.
 // The page recomputes each row from the snapshot figures — the fitted implied value, the
-// launch odds, the expected value and the conformal range — and its cover self-check says,
-// live, how many rows agree with board.json. Farm plans are the board's own strings; each
-// plan's deposit is sized to minimum viable capital and its verdict is costed in $/hour.
+// launch odds, the 12-month clock odds, the expected value and the conformal range — and its
+// cover self-check says, live, how many rows agree with board.json. Farm plans are the
+// board's own strings; each plan's deposit is sized to minimum viable capital and its verdict
+// is costed in $/hour.
 (function () {
   'use strict';
 
@@ -41,7 +42,7 @@
     if (days >= 365) return (days / 365).toFixed(1) + 'y';
     return Math.max(0, Math.round(days)) + 'd';
   }
-  // The fitted value model, radar-4: log10(mcap) = intercept + slope x log10(tvl), fitted on
+  // The fitted value model, radar-5: log10(mcap) = intercept + slope x log10(tvl), fitted on
   // the 128 live-token anchors. The page recomputes a row from the snapshot figures and checks
   // the number board.json carries, so the page's code and the board's data agree.
   function impliedOf(row) {
@@ -78,6 +79,30 @@
     var e = Math.exp(z);
     return e / (1 + e);
   }
+  // The launch clock, radar-5: a current-status Weibull proportional-hazards fit on the same
+  // 758 protocols. S(a) = exp(-(a / lambda)^k x exp(bx)). The 12-month forward odds are
+  // 1 - S(age + 1) / S(age): the chance a protocol still pre-token at its age launches in the
+  // next twelve months. The age covariate uses the protocol's age in years; the time argument
+  // floors the age at one day, as the model does.
+  function clockSurvival(a, lam, k, bx) {
+    return Math.exp(-Math.pow(a / lam, k) * Math.exp(bx));
+  }
+  function odds12Of(row) {
+    var c = DATA.clock_model;
+    var logTvl = Math.log10(Math.max(row.tvl_usd, 1));
+    var age = (row.age_days === null || row.age_days === undefined ? 365 : row.age_days) / 365;
+    var g = row.change_7d === null || row.change_7d === undefined ? 0 : row.change_7d;
+    g = Math.min(200, Math.max(-80, g));
+    var chains = Math.log10(1 + (row.chains ? row.chains.length : 0));
+    var rate = row.category !== null && c.cat_rates[row.category] !== undefined ? c.cat_rates[row.category] : c.global_rate;
+    var bx = c.coef_log_tvl * ((logTvl - c.mean_log_tvl) / c.sd_log_tvl)
+      + c.coef_age_years * ((age - c.mean_age_years) / c.sd_age_years)
+      + c.coef_growth * ((g - c.mean_growth) / c.sd_growth)
+      + c.coef_chains * ((chains - c.mean_chains) / c.sd_chains)
+      + c.coef_cat_rate * ((rate - c.mean_cat_rate) / c.sd_cat_rate);
+    var a = Math.max(1, row.age_days === null || row.age_days === undefined ? 365 : row.age_days) / 365;
+    return 1 - clockSurvival(a + 1, c.lambda_years, c.shape_k, bx) / clockSurvival(a, c.lambda_years, c.shape_k, bx);
+  }
   function evOf(row, odds) {
     return Math.round(((row.implied_value_usd * odds * row.farm.deposit_usd) / row.tvl_usd) * 100) / 100;
   }
@@ -90,6 +115,7 @@
     var stepsOk = rows.every(function (r) { return r.farm_steps.length === 8; });
     var impliedOk = rows.filter(function (r) { return impliedOf(r) === r.implied_value_usd; }).length;
     var oddsOk = rows.filter(function (r) { return Math.round(oddsOf(r) * 1e4) / 1e4 === r.launch_odds; }).length;
+    var odds12Ok = rows.filter(function (r) { return Math.round(odds12Of(r) * 1e4) / 1e4 === r.launch_odds_12m; }).length;
     var evOk = rows.filter(function (r) { return evOf(r, r.launch_odds) === r.expected_value_usd; }).length;
     var rangeOk = rows.filter(function (r) { var rg = rangeOf(r); return rg.lo === r.implied_lo_usd && rg.hi === r.implied_hi_usd; }).length;
     var ledgerOk = DATA.audit.length === DATA.integrity.protocols_total
@@ -103,6 +129,7 @@
       { label: 'Farm steps 8 / 8 on every row', ok: stepsOk },
       { label: 'Implied value recomputed ' + impliedOk + ' / ' + rows.length, ok: impliedOk === rows.length },
       { label: 'Launch odds recomputed ' + oddsOk + ' / ' + rows.length, ok: oddsOk === rows.length },
+      { label: '12m odds recomputed ' + odds12Ok + ' / ' + rows.length, ok: odds12Ok === rows.length },
       { label: 'Expected value recomputed ' + evOk + ' / ' + rows.length, ok: evOk === rows.length },
       { label: '80% range recomputed ' + rangeOk + ' / ' + rows.length, ok: rangeOk === rows.length },
       { label: 'Ledger accounts for ' + DATA.audit.length + ' / ' + DATA.integrity.protocols_total, ok: ledgerOk }
@@ -178,6 +205,7 @@
       else if (key === 'growth') { av = a.change_7d === null ? -Infinity : a.change_7d; bv = b.change_7d === null ? -Infinity : b.change_7d; }
       else if (key === 'age') { av = a.age_days === null ? Infinity : a.age_days; bv = b.age_days === null ? Infinity : b.age_days; }
       else if (key === 'odds') { av = a.launch_odds; bv = b.launch_odds; }
+      else if (key === 'odds12') { av = a.launch_odds_12m; bv = b.launch_odds_12m; }
       else if (key === 'ev') { av = a.expected_value_usd; bv = b.expected_value_usd; }
       else if (key === 'verdict') { av = a.farm.verdict_code === 'FARM' ? 2 : a.farm.verdict_code === 'THIN' ? 1 : 0; bv = b.farm.verdict_code === 'FARM' ? 2 : b.farm.verdict_code === 'THIN' ? 1 : 0; }
       else { av = a.implied_value_usd; bv = b.implied_value_usd; }
@@ -229,9 +257,11 @@
       ['128 live anchors', 'positive market caps fit the value model'],
       ['Leave-one-out x' + f.loo_multiple, 'fitted model vs the fixed median, out of sample'],
       ['Walk-forward x' + f.wf_multiple, 'fit on the older half, tested on the newer half'],
+      ['10-fold x' + f.cv10_multiple, 'folds by slug order, baseline refit per fold'],
       ['Within 3x ' + Math.round(f.within3 * 100) + '%', 'live tokens inside 3x of their true market cap, out of sample'],
       ['Launch-odds CV AUC ' + DATA.odds_model.cv_auc, '5-fold, category rates from the training folds only'],
       ['Median launch odds ' + fmtOdds(DATA.median_odds), 'peer-record score across the board'],
+      ['Median 12m odds ' + fmtOdds(DATA.median_odds_12m), 'chance of launching in the next year, from the clock'],
       ['Best expected value ' + fmtMoney(DATA.top_ev_usd), DATA.top_ev_name]
     ];
     return el('section', { class: 'kpi' }, items.map(function (it) {
@@ -333,6 +363,7 @@
           el('span', { class: 'num', text: fmtUsd(r.implied_value_usd) })
         )),
         el('td', { class: 'num', text: fmtOdds(r.launch_odds) }),
+        el('td', { class: 'num', text: fmtOdds(r.launch_odds_12m) }),
         el('td', { class: 'num ev', text: fmtMoney(r.expected_value_usd) }),
         el('td', null, el('span', { class: 'status ' + (r.farm.verdict_code === 'FARM' ? 'farm' : r.farm.verdict_code === 'THIN' ? 'thin' : 'skip'), text: r.farm.verdict_code })),
         el('td', null, el('span', { class: 'status' + (r.watchlist ? ' watch' : ''), text: r.watchlist ? 'watchlist' : 'no token' }))
@@ -342,7 +373,7 @@
     return el('div', { class: 'panel' },
       el('div', { class: 'table-wrap' },
         el('table', null,
-          el('caption', { class: 'sub', text: 'Pre-token protocols, strongest implied value first. Odds are a peer-record score, not a forecast; expected value is implied value x odds x the farmer\u2019s share at the plan\u2019s deposit. Select a row for its model and farm plan.' }),
+          el('caption', { class: 'sub', text: 'Pre-token protocols, strongest implied value first. Launch odds are a peer-record score, not a forecast; 12m odds are the clock\u2019s chance of a launch in the next year. Expected value is implied value x peer odds x the farmer\u2019s share at the plan\u2019s deposit. Select a row for its model and farm plan.' }),
           el('thead', null, el('tr', null,
             el('th', { scope: 'col', text: 'Rank' }),
             sortHeader('name', 'Protocol'),
@@ -351,6 +382,7 @@
             sortHeader('age', 'Age'),
             sortHeader('implied', 'Implied value'),
             sortHeader('odds', 'Launch odds'),
+            sortHeader('odds12', '12m odds'),
             sortHeader('ev', 'Expected value'),
             sortHeader('verdict', 'Verdict'),
             el('th', { scope: 'col', text: 'Token' })
@@ -386,11 +418,12 @@
 
   function auditTable() {
     var list = auditRows();
+    var ig = DATA.integrity;
     var sel = el('select', { 'aria-label': 'Filter the audit by status' },
-      el('option', { value: 'all', text: 'All 758 protocols', selected: state.auditStatus === 'all' ? 'selected' : null }),
-      el('option', { value: 'ranked', text: 'Ranked (197)', selected: state.auditStatus === 'ranked' ? 'selected' : null }),
-      el('option', { value: 'live', text: 'Live token (416)', selected: state.auditStatus === 'live' ? 'selected' : null }),
-      el('option', { value: 'excluded', text: 'Excluded (145)', selected: state.auditStatus === 'excluded' ? 'selected' : null })
+      el('option', { value: 'all', text: 'All ' + ig.protocols_total + ' protocols', selected: state.auditStatus === 'all' ? 'selected' : null }),
+      el('option', { value: 'ranked', text: 'Ranked (' + ig.ranked + ')', selected: state.auditStatus === 'ranked' ? 'selected' : null }),
+      el('option', { value: 'live', text: 'Live token (' + ig.live + ')', selected: state.auditStatus === 'live' ? 'selected' : null }),
+      el('option', { value: 'excluded', text: 'Excluded (' + ig.excluded + ')', selected: state.auditStatus === 'excluded' ? 'selected' : null })
     );
     sel.addEventListener('change', function () { state.auditStatus = sel.value; render(); });
     var tbody = el('tbody');
@@ -405,7 +438,7 @@
     return el('div', { class: 'panel' },
       el('div', { class: 'table-wrap' },
         el('table', null,
-          el('caption', { class: 'sub', text: 'Every protocol in the snapshot, accounted for: 197 ranked, 416 live-token and 145 excluded, each with its reason. Nothing is left out.' }),
+          el('caption', { class: 'sub', text: 'Every protocol in the snapshot, accounted for: ' + ig.ranked + ' ranked, ' + ig.live + ' live-token and ' + ig.excluded + ' excluded, each with its reason. Nothing is left out.' }),
           el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Rank' }), el('th', { scope: 'col', text: 'Protocol' }), el('th', { scope: 'col', text: 'Status' }), el('th', { scope: 'col', text: 'Why it sits here' }))),
           tbody
         )
@@ -414,20 +447,54 @@
     );
   }
 
+  // The farm matrix: verdict codes crossed with TVL terciles, counted live from the board.
+  function farmMatrix() {
+    var f = DATA.fit;
+    var codes = ['FARM', 'THIN', 'SKIP'];
+    var counts = codes.map(function () { return [0, 0, 0, 0]; });
+    DATA.rows.forEach(function (r) {
+      var ci = codes.indexOf(r.farm.verdict_code);
+      if (ci < 0) return;
+      var lt = Math.log10(r.tvl_usd);
+      var ti = lt < f.tercile_cutoffs[0] ? 0 : lt < f.tercile_cutoffs[1] ? 1 : 2;
+      counts[ci][ti]++;
+      counts[ci][3]++;
+    });
+    var head = el('thead', null, el('tr', null,
+      el('th', { scope: 'col', text: 'Verdict' }),
+      el('th', { scope: 'col', text: 'Small TVL' }),
+      el('th', { scope: 'col', text: 'Mid TVL' }),
+      el('th', { scope: 'col', text: 'Large TVL' }),
+      el('th', { scope: 'col', text: 'Total' })
+    ));
+    var body = el('tbody', null, codes.map(function (code, i) {
+      return el('tr', null,
+        el('td', null, el('span', { class: 'status ' + (code === 'FARM' ? 'farm' : code === 'THIN' ? 'thin' : 'skip'), text: code })),
+        el('td', { class: 'num', text: String(counts[i][0]) }),
+        el('td', { class: 'num', text: String(counts[i][1]) }),
+        el('td', { class: 'num', text: String(counts[i][2]) }),
+        el('td', { class: 'num', text: String(counts[i][3]) })
+      );
+    }));
+    return el('div', { class: 'table-wrap' }, el('table', { class: 'mini' }, head, body));
+  }
+
   function modelPanel() {
     var f = DATA.fit;
     var o = DATA.odds_model;
+    var c = DATA.clock_model;
     var ig = DATA.integrity;
     var termRows = f.term_tests.map(function (t) {
       return el('tr', null,
         el('td', { text: t.term }),
         el('td', { class: 'num', text: t.loo_with.toFixed(4) }),
         el('td', { class: 'num', text: t.wf_with.toFixed(4) }),
+        el('td', { class: 'num', text: t.cv10_with.toFixed(4) }),
         el('td', { text: t.decision })
       );
     });
     return el('section', { class: 'panel model' },
-      el('h2', { text: 'How radar-4 is fitted — and what it cannot do' }),
+      el('h2', { text: 'How radar-5 is fitted — and what it cannot do' }),
       el('p', { class: 'sub', text: 'The value model is fitted on the ' + f.anchors + ' live-token protocols with a positive market cap: log10(market cap) = ' + f.intercept + ' + ' + f.slope + ' x log10(TVL). It explains little — R² ' + f.r2 + ' — and the dashboard shows the misses instead of hiding them.' }),
       el('div', { class: 'formula' },
         'implied = 10 ^ (' + f.intercept + ' + ' + f.slope + ' x log10(tvl_usd))'
@@ -438,19 +505,28 @@
         el('div', { class: 'fact' }, el('span', { text: 'Leave-one-out error (log10)' }), el('b', { text: String(f.loo_mae) })),
         el('div', { class: 'fact' }, el('span', { text: 'Fixed-median error (log10)' }), el('b', { text: String(f.baseline_mae) })),
         el('div', { class: 'fact' }, el('span', { text: 'Leave-one-out improvement' }), el('b', { text: 'x' + f.loo_multiple })),
-        el('div', { class: 'fact' }, el('span', { text: 'Walk-forward improvement' }), el('b', { text: 'x' + f.wf_multiple + ' (n=' + f.wf_n + ')' }))
+        el('div', { class: 'fact' }, el('span', { text: 'Walk-forward improvement' }), el('b', { text: 'x' + f.wf_multiple + ' (n=' + f.wf_n + ')' })),
+        el('div', { class: 'fact' }, el('span', { text: '10-fold improvement' }), el('b', { text: 'x' + f.cv10_multiple })),
+        el('div', { class: 'fact' }, el('span', { text: 'Bootstrap slope, 5th–95th' }), el('b', { text: f.boot_slope_lo + ' – ' + f.boot_slope_hi }))
       ),
       el('p', { class: 'sub', text: 'Out of sample, the fitted model puts ' + Math.round(f.within5 * 100) + '% of live tokens within 5x of their true market cap, against ' + Math.round(f.within5_base * 100) + '% for the fixed median; the median error is x' + f.median_err_factor + ' against x' + f.median_err_factor_base + '. The 80% conformal band is x' + f.conformal80_factor + ' wide overall — x' + f.conformal80_factors[0] + ' for the smallest third of protocols, x' + f.conformal80_factors[1] + ' for the middle third and x' + f.conformal80_factors[2] + ' for the largest third — and every implied value on this board carries its own tercile range in its detail view.' }),
-      el('h3', { text: 'Every term was tested on both blind tests. The ones that failed were dropped.' }),
+      el('h3', { text: 'How steady is the fitted line?' }),
+      el('p', { class: 'sub', text: 'Two hundred resampled fits of the same anchors, one fixed seed: the slope sits between ' + f.boot_slope_lo + ' and ' + f.boot_slope_hi + ' (5th–95th percentile) and the intercept between ' + f.boot_intercept_lo + ' and ' + f.boot_intercept_hi + '. Every row carries its own refit band — the 10th/90th percentile of the implied value across those 200 fits — beside the wider conformal range in its detail view. The two bands are different things: the refit band says where the fitted line sits, the conformal range says where a real token can sit from the line. Rank ranges are not shown: with a TVL-only model a row\u2019s rank is exactly its TVL rank in every replicate, so every range would read zero wide.' }),
+      el('h3', { text: 'Every term was tested on three blind tests. The ones that failed were dropped.' }),
       el('div', { class: 'table-wrap' },
         el('table', { class: 'mini' },
-          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Term tested' }), el('th', { scope: 'col', text: 'Leave-one-out MAE' }), el('th', { scope: 'col', text: 'Walk-forward MAE' }), el('th', { scope: 'col', text: 'Decision' }))),
+          el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Term tested' }), el('th', { scope: 'col', text: 'Leave-one-out MAE' }), el('th', { scope: 'col', text: 'Walk-forward MAE' }), el('th', { scope: 'col', text: '10-fold MAE' }), el('th', { scope: 'col', text: 'Decision' }))),
           el('tbody', null, termRows)
         )
       ),
-      el('p', { class: 'sub', text: 'A term is kept only when it improves both blind tests. None of the candidates did — growth, curvature, chain count, age, interactions, category intercepts and robust fits all left the value fit — so the model stays TVL alone. Chain count and the category token rate do enter the launch-odds score below, where they earn their place on cross-validation.' }),
+      el('p', { class: 'sub', text: 'A term is kept only when it improves all three blind tests. None of the candidates did — growth, curvature, chain count, age, interactions, category intercepts and robust fits all left the value fit — so the model stays TVL alone. Chain count and the category token rate do enter the launch-odds score below, where they earn their place on cross-validation.' }),
       el('h3', { text: 'Launch odds: a peer-record score, not a forecast' }),
-      el('p', { class: 'sub', text: 'A logistic fit on all ' + o.n + ' protocols: the share of protocols with a given size, age, seven-day growth, chain count and category token rate that record a token in this snapshot. Coefficients (standardised): log TVL ' + o.coef_log_tvl + ', age ' + o.coef_age_years + ', growth ' + o.coef_growth + ', chains ' + o.coef_chains + ', category rate ' + o.coef_cat_rate + '. In-sample AUC ' + o.auc_in_sample + '; 5-fold cross-validated AUC ' + o.cv_auc + ' (folds ' + o.cv_fold_aucs.join(', ') + '), computed strictly — each fold’s category rates and standardisation come from its training rows only. Weak, but better than the three-feature score — and it rises with age, because older protocols have had more time to launch. A protocol still pre-token at its age is scored on its profile, not predicted to launch.' }),
+      el('p', { class: 'sub', text: 'A logistic fit on all ' + o.n + ' protocols: the share of protocols with a given size, age, seven-day growth, chain count and category token rate that record a token in this snapshot. Coefficients (standardised): log TVL ' + o.coef_log_tvl + ', age ' + o.coef_age_years + ', growth ' + o.coef_growth + ', chains ' + o.coef_chains + ', category rate ' + o.coef_cat_rate + '. In-sample AUC ' + o.auc_in_sample + '; 5-fold cross-validated AUC ' + o.cv_auc + ' (folds ' + o.cv_fold_aucs.join(', ') + '), held-out log-loss ' + o.cv_logloss + ' and Brier ' + o.cv_brier + ', computed strictly — each fold’s category rates and standardisation come from its training rows only. Weak, but better than the three-feature score — and it rises with age, because older protocols have had more time to launch. A protocol still pre-token at its age is scored on its profile, not predicted to launch.' }),
+      el('h3', { text: 'Launch clock: the next twelve months' }),
+      el('p', { class: 'sub', text: 'A current-status Weibull proportional-hazards fit on the same ' + c.n + ' protocols, with the same five profile features: a protocol\u2019s launch time is never observed, only whether it has launched by its age, so a launched protocol contributes log(1 - S(age)) and a still pre-token one log S(age). Scale ' + c.lambda_years + ' years, shape ' + c.shape_k + '. The shape is below one, so the hazard falls with age: the longer a protocol has gone without a token, the less likely it is to launch next year — the opposite of the peer score\u2019s age direction, and the reason the two sit side by side. Median 12-month odds across the board are ' + fmtOdds(DATA.median_odds_12m) + '. On the same five folds as the odds model it scores AUC ' + c.cv_auc + ' (folds ' + c.cv_fold_aucs.join(', ') + '), log-loss ' + c.cv_logloss + ' and Brier ' + c.cv_brier + ' — nearly as well as the peer score (' + o.cv_auc + ' / ' + o.cv_logloss + ' / ' + o.cv_brier + ') while answering the forward question the peer score cannot. It assumes the launch hazard depends on age and profile only, not on the calendar year a protocol listed in. Expected value still uses the peer-record odds; the clock is a second, forward view of the same row.' }),
+      el('h3', { text: 'Farm matrix: where the verdicts sit' }),
+      farmMatrix(),
+      el('p', { class: 'sub', text: 'FARM breaks even at a $250 stake or less; THIN breaks even but needs a bigger stake; SKIP cannot break even inside the $2,500 cap. ' + DATA.plans_break_even + ' of ' + DATA.board_size + ' plans break even at all.' }),
       el('h3', { text: 'Integrity: what this page can and cannot claim' }),
       el('p', { class: 'sub', text: 'Snapshot ' + DATA.as_of + ', ' + DATA.source + '. The program reads only that file: ' + ig.protocols_total + ' protocols, ' + ig.watchlist + ' on the watchlist, ' + ig.ranked + ' ranked, ' + ig.excluded + ' excluded by the product rule, ' + ig.live + ' live-token. Of the live set, ' + ig.live_positive_mcap + ' carry a positive market cap, ' + ig.live_zero_mcap + ' are recorded at $0 and ' + ig.live_negative_mcap + ' at -$1 (dead-token placeholders), and ' + ig.live_no_mcap + ' record a token with no market cap. No value is invented, no data after ' + DATA.as_of + ' is used, the page makes no network call, and two runs on the same input write the same bytes. Implied value is an estimate from the snapshot, not a price and not a prediction that a token will be issued.' })
     );
@@ -467,6 +543,7 @@
     dialog.textContent = '';
     var recomputed = impliedOf(row);
     var oddsRec = Math.round(oddsOf(row) * 1e4) / 1e4;
+    var odds12Rec = Math.round(odds12Of(row) * 1e4) / 1e4;
     var why = row.watchlist
       ? 'On the watchlist: at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL and no token on record.'
       : 'An early find the watchlist leaves out, ranked on the same model as every watchlist row.';
@@ -485,12 +562,14 @@
         el('div', null, el('span', { text: 'Seven-day growth' }), el('b', { class: 'num', text: fmtPct(row.change_7d) })),
         el('div', null, el('span', { text: 'Age with no token' }), el('b', { class: 'num', text: fmtAge(row.age_days) })),
         el('div', null, el('span', { text: 'Launch odds' }), el('b', { class: 'num', text: fmtOdds(row.launch_odds) })),
+        el('div', null, el('span', { text: 'Launch odds, next 12m' }), el('b', { class: 'num', text: fmtOdds(row.launch_odds_12m) })),
         el('div', null, el('span', { text: 'Implied value' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) })),
         el('div', null, el('span', { text: '80% range' }), el('b', { class: 'num', text: fmtUsd(row.implied_lo_usd) + ' – ' + fmtUsd(row.implied_hi_usd) })),
+        el('div', null, el('span', { text: 'Refit band (200 fits)' }), el('b', { class: 'num', text: fmtUsd(row.implied_boot_lo_usd) + ' – ' + fmtUsd(row.implied_boot_hi_usd) })),
         el('div', null, el('span', { text: 'Expected value / farmer' }), el('b', { class: 'num ev', text: fmtMoney(row.expected_value_usd) })),
         el('div', null, el('span', { text: 'Farm deposit' }), el('b', { class: 'num', text: '$' + row.farm.deposit_usd.toLocaleString('en-US') }))
       ),
-      el('p', { class: 'sub', text: why + ' Model ' + DATA.model_version + ' recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries' : ', which differs from the board: the data would be stale.') + ' Odds recompute to ' + fmtOdds(oddsRec) + '. The 80% range for this row is x' + (Math.round((row.implied_hi_usd / row.implied_value_usd) * 100) / 100) + ' wide: this is an estimate, not a price.' })
+      el('p', { class: 'sub', text: why + ' Model ' + DATA.model_version + ' recomputes this row as ' + fmtUsd(recomputed) + (recomputed === row.implied_value_usd ? ', the same number board.json carries' : ', which differs from the board: the data would be stale.') + ' Odds recompute to ' + fmtOdds(oddsRec) + ' and the 12-month clock to ' + fmtOdds(odds12Rec) + '. The 80% range for this row is x' + (Math.round((row.implied_hi_usd / row.implied_value_usd) * 100) / 100) + ' wide: this is an estimate, not a price. The refit band is narrower because it only says where the fitted line sits, not where a real token can sit.' })
     ));
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('h3', { text: 'Farm verdict' }),
