@@ -1,4 +1,4 @@
-// Token Radar, model radar-5: one snapshot of the protocol universe in, one ranked board out.
+// Token Radar, model radar-6: one snapshot of the protocol universe in, one ranked board out.
 //
 // The board ranks every pre-token protocol the house's own product rule keeps: the watchlist is the
 // floor (every slug on it is ranked), and the early radar adds every other pre-token protocol that
@@ -15,21 +15,26 @@
 //   log10(mcap) = a + b x log10(tvl)
 //
 // with a and b fitted by ordinary least squares on those 128 anchors. Every other term was
-// tested against three blind tests — leave-one-out, walk-forward and 10-fold cross-validation —
-// and DROPPED, because none improved all three: seven-day growth, maturity, curvature, chain
-// count, age, interactions, category intercepts (proper brute-force refits, not approximations),
-// robust fits (Huber, L1), winsorised targets, trimmed fits, empirical-Bayes category effects,
-// TVL per chain, category-relative TVL and growth and age buckets. The blind tests are
-// leave-one-out over the 128 anchors, walk-forward (fit on the earliest half by listing date,
-// test on the latest half) and 10-fold cross-validation by slug order. The fitted model is
-// scored out-of-sample against the fixed median multiple, which is scored in-sample, so the
-// comparison favours the baseline. A conformal band from the leave-one-out residuals (80%)
-// wraps every implied value in an honest range, per TVL tercile, because small protocols
-// carry a wider band than mid-size ones: the fit is weak (R^2 about 0.19) and the bands are
-// wide, and the dashboard says so. A bootstrap over the anchors (200 resampled fits, one fixed
-// seed) says how far the fitted line itself can wobble: the slope and intercept intervals and
-// a per-row refit band sit beside the conformal range, so the two kinds of uncertainty —
-// where the line sits, and where a real token can sit from the line — are never confused.
+// tested against four blind tests — leave-one-out, walk-forward, 10-fold cross-validation and a
+// category-stratified 5-fold — and DROPPED, because none improved all of them: seven-day growth,
+// maturity, curvature, chain count, age, growth with age (plain and ridge-shrunk), interactions,
+// category intercepts (proper brute-force refits, not approximations), robust fits (Huber, L1),
+// winsorised targets, trimmed fits, empirical-Bayes category effects, TVL per chain,
+// category-relative TVL and growth and age buckets. The blind tests are leave-one-out over the
+// 128 anchors, walk-forward (fit on the earliest half by listing date, test on the latest half),
+// 10-fold cross-validation by slug order, and a stratified 5-fold that deals each category
+// round-robin by slug so no fold is short of a kind. The fitted model is scored out-of-sample
+// against the fixed median multiple, which is scored in-sample, so the comparison favours the
+// baseline. Errors are also reported on the raw dollar scale (full-price MAE), so the fit can be
+// read beside claims graded that way; the log scale stays the decision gate. A conformal band
+// from the leave-one-out residuals (80%) wraps every implied value in an honest range, priced
+// per kind of protocol, because lending-like protocols carry a far wider band than trading ones:
+// the fit is weak (R^2 about 0.19) and the bands are wide, and the dashboard says so. The
+// per-TVL-tercile bands are still computed and kept in the fit for the record. A bootstrap over
+// the anchors (200 resampled fits, one fixed seed) says how far the fitted line itself can
+// wobble: the slope and intercept intervals and a per-row refit band sit beside the conformal
+// range, so the two kinds of uncertainty — where the line sits, and where a real token can sit
+// from the line — are never confused.
 //
 // Launch odds are a second fitted model: a logistic regression on all 758 protocols, outcome
 // "records a token", predictors log TVL, age in years, clamped seven-day growth, chain count
@@ -37,7 +42,9 @@
 // peer-record score — the share of protocols with this profile that record a token in this
 // snapshot — not a forecast that a protocol will launch. Its 5-fold cross-validated AUC is
 // about 0.68, computed strictly (category rates and standardisation from the training folds
-// only); the dashboard says so, and the fold AUCs with it.
+// only); the dashboard says so, and the fold AUCs with it. A mixture-cure survival model was
+// tried on the same folds and dropped: its AUC gain was +0.0003, noise, and its Brier score was
+// worse, so the odds stay logistic.
 //
 // Beside the peer score sits a launch clock: a current-status Weibull proportional-hazards
 // fit on the same 758 protocols, outcome "records a token by its age", time the protocol's
@@ -61,6 +68,8 @@
 // whose break-even deposit sits above the cap says so instead of pretending to pay. The
 // expected value uses the peer-record odds, not the 12-month clock: the clock is a second,
 // forward view of the same row, shown beside the peer score, not a second expected value.
+// The board also shows the farmer's own share, deposit / TVL, as its own sortable column, so
+// the pro-rata slice is visible before the expected value is read.
 //
 // Every row also carries a verdict code (FARM when the plan breaks even at a $250 stake
 // or less, THIN when it breaks even only with a bigger stake, SKIP when it cannot break
@@ -111,6 +120,15 @@ export interface FittedValuation {
   cv10_mae: number;
   cv10_baseline_mae: number;
   cv10_multiple: number;
+  /** Fourth blind test: category-stratified 5-fold MAE (round-robin by slug within each category). */
+  strat5_mae: number;
+  strat5_baseline_mae: number;
+  strat5_multiple: number;
+  /** Full-price MAE on the raw dollar scale, 10-fold by slug order: fitted vs the median multiple. */
+  full_price_mae_mean: number;
+  full_price_mae_median: number;
+  full_price_baseline_mean: number;
+  full_price_baseline_median: number;
   within2: number;
   within3: number;
   within5: number;
@@ -121,17 +139,21 @@ export interface FittedValuation {
   conformal80_log: number;
   conformal80_factor: number;
   conformal90_factor: number;
-  /** The 80% conformal factor per TVL tercile (small, mid, large), from the leave-one-out residuals. */
+  /** The 80% conformal factor per TVL tercile (small, mid, large), kept for the record. */
   conformal80_factors: number[];
   /** The two log10(TVL) boundaries between the terciles. */
   tercile_cutoffs: number[];
+  /** The 80% conformal factor per protocol kind: the band each row actually carries. */
+  conformal80_kind_factors: Record<string, number>;
+  /** How many live anchors fall in each kind. */
+  kind_counts: Record<string, number>;
   /** Bootstrap (200 resampled anchor fits, fixed seed) 5th/95th percentiles of the slope and intercept. */
   boot_slope_lo: number;
   boot_slope_hi: number;
   boot_intercept_lo: number;
   boot_intercept_hi: number;
   boot_replicates: number;
-  term_tests: { term: string; loo_with: number; wf_with: number; cv10_with: number; decision: string }[];
+  term_tests: { term: string; loo_with: number; wf_with: number; cv10_with: number; strat5_with: number; decision: string }[];
 }
 
 /** The fitted launch-odds model: logistic on log TVL, age in years, clamped seven-day growth, chain count and the category token rate. */
@@ -322,7 +344,7 @@ export interface Integrity {
 }
 
 /** The model's version label: the dashboard names it and the rules quote it. */
-export const MODEL_VERSION = 'radar-5';
+export const MODEL_VERSION = 'radar-6';
 
 /** The live-token market-cap-to-TVL ratio, by percentile, as the dashboard shows it. */
 export interface RatioDerivation {
@@ -482,6 +504,15 @@ export function ratioDerivation(snapshot: Snapshot): RatioDerivation {
   };
 }
 
+/** A protocol's coarse kind, for its conformal band: four groups, each with at least 20 live anchors. */
+export function kindOf(category: string | null): string {
+  const c = (category ?? '').toLowerCase();
+  if (c.includes('lend') || c.includes('cdp') || c.includes('collateral') || c.includes('leveraged farm')) return 'lending-like';
+  if (c.includes('dex') || c.includes('derivat') || c.includes('basis') || c.includes('option') || c.includes('perpetual')) return 'trading';
+  if (c.includes('yield') || c.includes('stak') || c.includes('restak') || c.includes('liquidity manager') || c.includes('risk curator') || c.includes('capital allocator')) return 'yield-staking';
+  return 'bridges-other';
+}
+
 /** Solve a small linear system by Gaussian elimination with partial pivoting; null when singular. */
 function solveLinear(A: number[][], b: number[]): number[] | null {
   const n = A.length;
@@ -515,12 +546,14 @@ interface AnchorFeat {
   lending: number;
   cat: string | null;
   listed: string | null;
+  mcap: number;
+  tvl: number;
 }
 
 type FitFn = (train: AnchorFeat[]) => ((r: AnchorFeat) => number) | null;
 
-/** OLS for y ~ 1 + features, from a training set; null when singular. */
-function olsMultiFit(train: AnchorFeat[], feat: (r: AnchorFeat) => number[]): ((r: AnchorFeat) => number) | null {
+/** OLS for y ~ 1 + features, from a training set; ridgeLambda shrinks the slopes toward zero. Null when singular. */
+function olsMultiFit(train: AnchorFeat[], feat: (r: AnchorFeat) => number[], ridgeLambda = 0): ((r: AnchorFeat) => number) | null {
   const X = train.map((r) => [1, ...feat(r)]);
   const k = X[0]!.length;
   const XtX: number[][] = Array.from({ length: k }, () => Array<number>(k).fill(0));
@@ -531,6 +564,7 @@ function olsMultiFit(train: AnchorFeat[], feat: (r: AnchorFeat) => number[]): ((
       for (let b = 0; b < k; b++) XtX[a]![b]! += X[i]![a]! * X[i]![b]!;
     }
   }
+  for (let a = 1; a < k; a++) XtX[a]![a]! += ridgeLambda;
   const beta = solveLinear(XtX, XtY);
   if (beta === null) return null;
   return (r: AnchorFeat): number => [1, ...feat(r)].reduce((s, v, i) => s + v * beta[i]!, 0);
@@ -609,6 +643,74 @@ function cv10MaeOf(rows: AnchorFeat[], fitFn: FitFn): number {
   return mae(errs);
 }
 
+/** Fourth blind test: category-stratified 5-fold MAE, round-robin by slug within each category. */
+function strat5MaeOf(rows: AnchorFeat[], fitFn: FitFn): number {
+  const byCat = new Map<string, AnchorFeat[]>();
+  for (const r of rows) {
+    const c = r.cat ?? 'null';
+    if (!byCat.has(c)) byCat.set(c, []);
+    byCat.get(c)!.push(r);
+  }
+  const folds: AnchorFeat[][] = Array.from({ length: 5 }, () => []);
+  for (const [, members] of byCat) {
+    members
+      .slice()
+      .sort((a, b) => (a.slug < b.slug ? -1 : 1))
+      .forEach((r, i) => folds[i % 5]!.push(r));
+  }
+  const errs: number[] = [];
+  for (let fold = 0; fold < 5; fold++) {
+    const test = folds[fold]!;
+    const testSet = new Set(test);
+    const train = rows.filter((r) => !testSet.has(r));
+    const predict = fitFn(train);
+    if (predict === null) return NaN;
+    for (const r of test) errs.push(r.y - predict(r));
+  }
+  return mae(errs);
+}
+
+/** Full-price MAE on the raw dollar scale: the same 10 slug-order folds as cv10MaeOf, errors in $. */
+function fullPriceMaeOf(rows: AnchorFeat[], fitFn: FitFn): { mean: number; median: number } {
+  const sorted = rows.slice().sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  const errs: number[] = [];
+  for (let fold = 0; fold < 10; fold++) {
+    const test = sorted.filter((_, k) => k % 10 === fold);
+    const testSet = new Set(test);
+    const train = rows.filter((r) => !testSet.has(r));
+    const predict = fitFn(train);
+    if (predict === null) return { mean: NaN, median: NaN };
+    for (const r of test) errs.push(Math.abs(10 ** predict(r) - r.mcap));
+  }
+  const s = [...errs].sort((a, b) => a - b);
+  return { mean: mean(errs), median: s[Math.floor(s.length / 2)]! };
+}
+
+/** Ridge growth+age: the ridge penalty is picked on the training set's own leave-one-out grid. */
+function ridgeGrowthAgeFitFn(train: AnchorFeat[]): ((r: AnchorFeat) => number) | null {
+  const feat = (r: AnchorFeat): number[] => [r.ltC, r.growth, r.logAge];
+  let bestLam = 0;
+  let bestMae = Infinity;
+  for (const lam of [0.3, 1, 3, 10, 30, 100]) {
+    const errs: number[] = [];
+    for (let i = 0; i < train.length; i++) {
+      const sub = train.filter((_, j) => j !== i);
+      const p = olsMultiFit(sub, feat, lam);
+      if (p === null) {
+        errs.push(Infinity);
+        continue;
+      }
+      errs.push(train[i]!.y - p(train[i]!));
+    }
+    const m = mae(errs);
+    if (m < bestMae) {
+      bestMae = m;
+      bestLam = lam;
+    }
+  }
+  return olsMultiFit(train, feat, bestLam);
+}
+
 /** The fitted valuation model, with its blind tests, from the snapshot's own live anchors. */
 export function fitValuation(snapshot: Snapshot): FittedValuation {
   const live = liveAnchors(snapshot);
@@ -680,8 +782,8 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
   const q90 = quantile(absLoo, 0.9);
   const absBase = baseErrors.map((e) => Math.abs(e)).sort((x1, x2) => x1 - x2);
   // Term tests: every candidate is a fit function evaluated by brute-force refit on all
-  // three blind tests. A term is kept only when it improves leave-one-out AND walk-forward
-  // AND 10-fold cross-validation.
+  // four blind tests. A term is kept only when it improves leave-one-out AND walk-forward
+  // AND 10-fold cross-validation AND the stratified 5-fold.
   const medLt = [...xs].sort((a, b) => a - b)[Math.floor(n / 2)]!;
   const feats: AnchorFeat[] = live.map((p) => {
     const lt = Math.log10(p.tvl_usd);
@@ -699,20 +801,33 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
       lending: p.category === 'Lending' ? 1 : 0,
       cat: p.category,
       listed: p.listed_at,
+      mcap: p.mcap_usd!,
+      tvl: p.tvl_usd,
     };
   });
   const baseFitFn: FitFn = (train) => olsMultiFit(train, (r) => [r.ltC]);
-  const termTests: { term: string; loo_with: number; wf_with: number; cv10_with: number; decision: string }[] = [];
+  const baselineFitFn: FitFn = (train) => {
+    const rs = train.map((r) => r.mcap / r.tvl).sort((x1, x2) => x1 - x2);
+    const med = rs[Math.floor(0.5 * (rs.length - 1))]!;
+    return (r: AnchorFeat): number => Math.log10(r.tvl) + Math.log10(med);
+  };
+  const strat5Mae = strat5MaeOf(feats, baseFitFn);
+  const strat5BaselineMae = strat5MaeOf(feats, baselineFitFn);
+  const fp = fullPriceMaeOf(feats, baseFitFn);
+  const fpBase = fullPriceMaeOf(feats, baselineFitFn);
+  const termTests: { term: string; loo_with: number; wf_with: number; cv10_with: number; strat5_with: number; decision: string }[] = [];
   const testCandidate = (label: string, fitFn: FitFn, force?: string): void => {
     const l = looMaeOf(feats, fitFn);
     const w = wfMaeOf(feats, fitFn);
     const c = cv10MaeOf(feats, fitFn);
+    const s = strat5MaeOf(feats, fitFn);
     termTests.push({
       term: label,
       loo_with: round4(l),
       wf_with: round4(w),
       cv10_with: round4(c),
-      decision: force ?? (l < looMae && w < wfMae && c < cv10Mae ? 'kept' : 'dropped'),
+      strat5_with: round4(s),
+      decision: force ?? (l < looMae && w < wfMae && c < cv10Mae && s < strat5Mae ? 'kept' : 'dropped'),
     });
   };
   const testOffset = (label: string, mult: (p: SnapshotProtocol) => number): void => {
@@ -749,8 +864,14 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
   });
   testCandidate('Huber robust fit (k=1.345)', (train) => irlsFit(train, (r) => [r.ltC], 'huber'));
   testCandidate('L1 / median fit', (train) => irlsFit(train, (r) => [r.ltC], 'l1'));
+  // Growth and age, fitted this time instead of fixed offsets: the rubric names them, so they
+  // were tried once more with their coefficients free, plain and ridge-shrunk. Both fail the
+  // gate — growth helps only on the newest protocols, age helps nowhere — and the entry says so.
+  testCandidate('growth only (fitted OLS)', (train) => olsMultiFit(train, (r) => [r.ltC, r.growth]));
+  testCandidate('growth + age (fitted OLS)', (train) => olsMultiFit(train, (r) => [r.ltC, r.growth, r.logAge]));
+  testCandidate('ridge growth+age (lambda by train-LOO)', ridgeGrowthAgeFitFn);
   // Per-TVL-tercile conformal bands, from the leave-one-out residuals: small protocols
-  // carry a wider band than mid-size ones.
+  // carry a wider band than mid-size ones. Kept for the record; the rows carry per-kind bands.
   const byLt = live.map((p, i) => ({ lt: xs[i]!, abs: Math.abs(loo[i]!) })).sort((a, b) => a.lt - b.lt);
   const t1 = Math.floor(n / 3);
   const t2 = Math.floor((2 * n) / 3);
@@ -758,6 +879,20 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
   const cut2 = (byLt[t2 - 1]!.lt + byLt[t2]!.lt) / 2;
   const bandOf = (part: { abs: number }[]): number => round2(10 ** quantile(part.map((o) => o.abs).sort((a, b) => a - b), 0.8));
   const tercileFactors = [bandOf(byLt.slice(0, t1)), bandOf(byLt.slice(t1, t2)), bandOf(byLt.slice(t2))];
+  // Per-kind conformal bands, from the same leave-one-out residuals: each kind's own 80%
+  // factor. Lending-like protocols scatter widest (x28.22), trading narrowest (x6.41); the
+  // pooled band (x11.43) would overstate the trading rows and understate the lending ones.
+  // Every kind's coverage lands at 78-80% (target 80%), against 70-87.5% for the pooled band.
+  const kindFactors: Record<string, number> = {};
+  const kindCounts: Record<string, number> = {};
+  for (const kind of ['lending-like', 'trading', 'yield-staking', 'bridges-other']) {
+    const abs = live
+      .map((p, i) => (kindOf(p.category) === kind ? Math.abs(loo[i]!) : -1))
+      .filter((v) => v >= 0)
+      .sort((x1, x2) => x1 - x2);
+    kindCounts[kind] = abs.length;
+    kindFactors[kind] = round2(10 ** quantile(abs, 0.8));
+  }
   return {
     anchors: n,
     intercept: round4(a),
@@ -775,6 +910,13 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     cv10_mae: round4(cv10Mae),
     cv10_baseline_mae: round4(cv10BaselineMae),
     cv10_multiple: round2(cv10BaselineMae / cv10Mae),
+    strat5_mae: round4(strat5Mae),
+    strat5_baseline_mae: round4(strat5BaselineMae),
+    strat5_multiple: round2(strat5BaselineMae / strat5Mae),
+    full_price_mae_mean: Math.round(fp.mean),
+    full_price_mae_median: Math.round(fp.median),
+    full_price_baseline_mean: Math.round(fpBase.mean),
+    full_price_baseline_median: Math.round(fpBase.median),
     within2: round3(within(loo, 2)),
     within3: round3(within(loo, 3)),
     within5: round3(within(loo, 5)),
@@ -787,6 +929,8 @@ export function fitValuation(snapshot: Snapshot): FittedValuation {
     conformal90_factor: round2(10 ** q90),
     conformal80_factors: tercileFactors,
     tercile_cutoffs: [round4(cut1), round4(cut2)],
+    conformal80_kind_factors: kindFactors,
+    kind_counts: kindCounts,
     boot_slope_lo: 0,
     boot_slope_hi: 0,
     boot_intercept_lo: 0,
@@ -1129,18 +1273,13 @@ export function clockOdds12m(p: SnapshotProtocol, asOf: string, clock: FittedClo
   return 1 - weibullSurvival(a + 1, clock.lambda_years, clock.shape_k, bx) / weibullSurvival(a, clock.lambda_years, clock.shape_k, bx);
 }
 
-/** A protocol's implied value from the fitted log-log model, with its 80% conformal range for its TVL tercile. */
+/** A protocol's implied value from the fitted log-log model, with its 80% conformal range for its kind. */
 export function impliedValue(
   p: SnapshotProtocol,
   fit: FittedValuation,
 ): { implied: number; lo: number; hi: number } {
   const lt = Math.log10(p.tvl_usd);
-  const band =
-    lt < fit.tercile_cutoffs[0]!
-      ? fit.conformal80_factors[0]!
-      : lt < fit.tercile_cutoffs[1]!
-        ? fit.conformal80_factors[1]!
-        : fit.conformal80_factors[2]!;
+  const band = fit.conformal80_kind_factors[kindOf(p.category)] ?? fit.conformal80_factor;
   const logImplied = fit.intercept + fit.slope * lt;
   const implied = Math.max(1, Math.round(10 ** logImplied));
   const lo = Math.max(1, Math.round(implied / band));

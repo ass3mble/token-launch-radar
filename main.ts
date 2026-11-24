@@ -1,7 +1,7 @@
 // Token Radar, entry program (Node 22, standard library only).
 //
 // Reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
-// pre-token protocol with the radar-5 model in lib/model.ts, writes the ranked board to
+// pre-token protocol with the radar-6 model in lib/model.ts, writes the ranked board to
 // /output/board.json, writes the dashboard's data beside the page as data.js, copies this
 // repository's dashboard/ and screenshots/ to /output, and writes /output/dossier.json with the
 // vendored make.fun library, exactly as the gate's dossier_matches row rebuilds it.
@@ -86,7 +86,8 @@ writeFileSync(
 
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
-    `token radar: model radar-5: log10(mcap) = ${radar.fit.intercept} + ${radar.fit.slope} x log10(TVL), R^2 ${radar.fit.r2}, LOO MAE ${radar.fit.loo_mae} (baseline ${radar.fit.baseline_mae}), walk-forward ${radar.fit.wf_mae}, 10-fold ${radar.fit.cv10_mae}\n` +
+    `token radar: model radar-6: log10(mcap) = ${radar.fit.intercept} + ${radar.fit.slope} x log10(TVL), R^2 ${radar.fit.r2}, LOO MAE ${radar.fit.loo_mae} (baseline ${radar.fit.baseline_mae}), walk-forward ${radar.fit.wf_mae}, 10-fold ${radar.fit.cv10_mae}, stratified 5-fold ${radar.fit.strat5_mae}\n` +
+    `token radar: per-kind 80% bands: ${Object.entries(radar.fit.conformal80_kind_factors).map(([k, v]) => `${k} x${v}`).join(', ')} (pooled x${radar.fit.conformal80_factor}); full-price MAE mean $${radar.fit.full_price_mae_mean.toLocaleString('en-US')} (baseline $${radar.fit.full_price_baseline_mean.toLocaleString('en-US')})\n` +
     `token radar: odds CV AUC ${radar.odds_model.cv_auc}, clock 12-month median ${(radar.clock_model.median_12m * 100).toFixed(1)}%, shape ${radar.clock_model.shape_k}, bootstrap slope ${radar.fit.boot_slope_lo}..${radar.fit.boot_slope_hi}\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );

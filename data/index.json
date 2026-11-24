@@ -10,11 +10,22 @@
       "slope": 0.5223,
       "walk_forward_multiple": 1.18,
       "cv10_multiple": 1.12,
+      "strat5_multiple": 1.08,
       "conformal80_factors": [
         21.81,
         7.5,
         10.83
       ],
+      "conformal80_kind_factors": {
+        "lending-like": 28.22,
+        "trading": 6.41,
+        "yield-staking": 13.08,
+        "bridges-other": 8.45
+      },
+      "full_price_mae_mean": 111153979,
+      "full_price_mae_median": 8316496,
+      "full_price_baseline_mean": 200373816,
+      "full_price_baseline_median": 13360457,
       "boot_slope_lo": 0.397,
       "boot_slope_hi": 0.6517
     },
@@ -98,10 +109,17 @@
       "rank_by_implied": 191
     },
     "top_implied_value_usd": 90258539,
-    "watchlist_rows": 40
+    "watchlist_rows": 40,
+    "verdicts": {
+      "SKIP": 31,
+      "THIN": 144,
+      "FARM": 22
+    },
+    "plans_break_even": 166
   },
   "competition": "token-radar-01",
-  "dossier_bytes": 830446,
+  "dossier_bytes": 790948,
+  "dashboard_bytes": 53030,
   "files": [
     "main.ts",
     "lib/model.ts",
@@ -131,8 +149,8 @@
     "screenshots": "pass",
     "sorted_by_value": "pass"
   },
-  "generated_at_utc": "2026-11-23T15:56:26Z",
-  "model_version": "radar-5",
+  "generated_at_utc": "2026-11-24T14:07:00Z",
+  "model_version": "radar-6",
   "note": "Local gate mirror only; the sealed scorer grades on the server. Not yet submitted.",
   "snapshot_as_of": "2026-11-14",
   "snapshot_source": "DefiLlama https://api.llama.fi/protocols",
